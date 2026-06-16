@@ -1069,6 +1069,7 @@
   #abc-notation-area svg { pointer-events: none; }
   .score-slot.score-active { color: #2176ae; transition: color 0.06s; }
   .score-slot.score-accent.score-active { color: #c0392b; }
+  .abc-measure-active { background: rgba(33,118,174,0.10); border-left: 3px solid #2176ae; border-radius: 3px; transition: background 0.1s; }
 
   /* ABC拍カーソル */
   #abc-beat-cursor { display: none; gap: 3px; padding: 3px 0 5px; }
@@ -4088,7 +4089,7 @@ function buildAbcCursor(total) {
   if (!el) return;
   el.innerHTML = '';
   if (total === 0) { el.style.display = 'none'; return; }
-  el.style.cssText = 'display:flex; gap:3px; padding:3px 0 5px;';
+  el.style.cssText = 'display:flex; gap:3px; overflow:hidden; height:0; padding:0; margin:0;';
   for (let i = 0; i < total; i++) {
     const d = document.createElement('div');
     d.className = 'abc-cdot';
@@ -4107,6 +4108,13 @@ function flashAbcCursor(pos, isAccent) {
     } else {
       d.classList.remove('active', 'accent');
     }
+  }
+  // 現在演奏中の小節をハイライト（PC・モバイル共通）
+  if (_abcDotsPerMeasure > 0) {
+    const activeMeasure = Math.min(Math.floor(pos / _abcDotsPerMeasure), _abcNumMeasures - 1);
+    document.querySelectorAll('[id^="abc-m"]').forEach(el => el.classList.remove('abc-measure-active'));
+    const activeEl = document.getElementById('abc-m' + activeMeasure);
+    if (activeEl) activeEl.classList.add('abc-measure-active');
   }
   // 3小節以上のモバイル: 小節境界を越えたらウィンドウをスライド
   if (_abcNumMeasures > 2 && _abcDotsPerMeasure > 0) {
@@ -4133,6 +4141,7 @@ function flashAbcCursor(pos, isAccent) {
 
 function clearAbcCursor() {
   document.querySelectorAll('.abc-cdot').forEach(d => d.classList.remove('active', 'accent'));
+  document.querySelectorAll('[id^="abc-m"]').forEach(el => el.classList.remove('abc-measure-active'));
   _abcCurrentWindow = 0;
   _scrollAbcToWindow(0);
   _scoreCurrentRow = 0;
@@ -4424,8 +4433,8 @@ function renderAbcScore(slotIdx) {
 
   const subs = getSubsPerBeat();
   buildAbcCursor(beats * (subs + 1));
-  // スライドウィンドウ用パラメータ更新
-  _abcNumMeasures = (isMobile && measures.length > 1) ? measures.length : 0;
+  // スライドウィンドウ用＋ハイライト用パラメータ更新
+  _abcNumMeasures = measures.length > 1 ? measures.length : 0;
   _abcDotsPerMeasure = _abcNumMeasures > 0 ? (beats * (subs + 1)) / _abcNumMeasures : 0;
 }
 
