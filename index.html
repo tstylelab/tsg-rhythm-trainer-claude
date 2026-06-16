@@ -2933,7 +2933,7 @@ function renderScoreView() {
 
     rowSlots.forEach((slot, i) => {
       const x = xs[i];
-      svg += `<rect x="${x - step*0.46}" y="0" width="${step*0.92}" height="${H}" fill="transparent" style="cursor:pointer" onclick="${slot.clickFn}"/>`;
+      svg += `<rect x="${x - step*0.46}" y="0" width="${step*0.92}" height="${H}" fill="transparent"/>`;
     });
 
     svg += '</svg>';
