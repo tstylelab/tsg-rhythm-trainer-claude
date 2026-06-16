@@ -2763,8 +2763,17 @@ function setShowScore(val) {
   const scoreEl = document.getElementById('score-container');
   const dotsEl  = document.getElementById('beat-indicators');
   if (scoreEl) scoreEl.style.display = showScore ? 'block' : 'none';
-  if (dotsEl)  dotsEl.style.display  = showScore ? 'none'  : '';
-  if (showScore) renderScoreView();
+  if (showScore) {
+    if (dotsEl) dotsEl.style.display = 'none';
+    renderScoreView();
+  } else {
+    // ABC表示・ドット表示の状態をrenderAbcScoreに正しく復元させる
+    if (typeof renderAbcScore === 'function' && typeof metroSelectedSlot !== 'undefined') {
+      renderAbcScore(metroSelectedSlot);
+    } else {
+      if (dotsEl) dotsEl.style.display = '';
+    }
+  }
 }
 
 // ===== 休符記号 =====
@@ -2799,122 +2808,150 @@ function renderScoreView() {
   const container = document.getElementById('score-container');
   if (!container || !showScore) return;
 
-  const subs = getSubsPerBeat(); // 0=quarter, 1=eighth, 3=sixteenth
+  const globalSubs = getSubsPerBeat();
+  const beatsPerRow = 4; // 1行 = 4拍（1小節分）
+  const numRows = Math.ceil(beats / beatsPerRow);
 
-  // 全スロットをフラット配列に
-  const slots = [];
-  for (let b = 0; b < beats; b++) {
-    slots.push({ isMuted: beatMuted[b], isAccent: (b === 0 || allAccent), beatIdx: b, subIdx: -1,
-                 clickFn: `toggleBeatMute(${b})` });
-    for (let s = 0; s < subs; s++) {
-      const m = Array.isArray(subMuted[b]) ? !!subMuted[b][s] : false;
-      slots.push({ isMuted: m, isAccent: false, beatIdx: b, subIdx: s,
-                   clickFn: `toggleSubMute(${b},${s})` });
-    }
+  // ABCデータから各小節の音符密度を判定（四分=0, 八分=1, 十六分=3）
+  const scoreAbc = (typeof currentCategoryAbcStrings !== 'undefined' && metroSelectedSlot != null)
+    ? (currentCategoryAbcStrings[metroSelectedSlot] || '') : '';
+  const scoreMeasures = scoreAbc.split('|').map(m => m.trim()).filter(m => m.length > 0);
+  function detectRowSubs(measureAbc) {
+    if (!measureAbc) return globalSubs;
+    if (/[a-gA-GzZ]\//.test(measureAbc)) return 3;  // 十六分音符あり
+    if (/[a-gA-GzZ](?!\d)/.test(measureAbc)) return 1; // 八分音符あり
+    return 0; // 四分音符のみ
+  }
+
+  // 各行のrowSubsと開始ドットインデックスを事前計算
+  const rowSubsArray = [];
+  const rowStartDotsArray = [0];
+  for (let r = 0; r < numRows; r++) {
+    const rs = detectRowSubs(scoreMeasures[r]);
+    rowSubsArray.push(rs);
+    if (r < numRows - 1) rowStartDotsArray.push(rowStartDotsArray[r] + beatsPerRow * (globalSubs + 1));
   }
 
   const W = 400;
-  const pickPad = showPick ? 18 : 0;          // ピック記号用の上余白
+  const pickPad = showPick ? 18 : 0;
   const H       = 90 + pickPad;
-  const staffTop = 16 + pickPad, lineGap = 8; // 5線位置
-  const staffBot = staffTop + 4 * lineGap;
-  const noteY    = staffTop + 2 * lineGap;    // 中央線
+  const staffTop = 16 + pickPad, lineGap = 8;
+  const noteY    = staffTop + 2 * lineGap;
   const stemH    = Math.round(lineGap * 3.5);
   const stemTop  = noteY - stemH;
-  const noteRx = 6, noteRy = 4;
-  const pickSymH = 11, pickSymHW = 6;         // ピック記号の高さ・半幅
-  const pickY    = stemTop - pickSymH - 3;    // ピック記号の上端
+  const pickSymH = 11, pickSymHW = 6;
+  const pickY    = stemTop - pickSymH - 3;
   const mL = 52, mR = 20;
-  const step = (W - mL - mR) / slots.length;
-
-  let svg = `<svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:auto;display:block;">`;
-
-  // 1本線（リズム譜スタイル）
-  svg += `<line x1="${mL-8}" y1="${noteY}" x2="${W-mR+8}" y2="${noteY}" stroke="#444" stroke-width="1.5"/>`;
-  // 縦線・終止線
-  svg += `<line x1="${mL-8}" y1="${noteY-14}" x2="${mL-8}" y2="${noteY+14}" stroke="#333" stroke-width="2.2"/>`;
-  svg += `<line x1="${W-mR+5}" y1="${noteY-14}" x2="${W-mR+5}" y2="${noteY+14}" stroke="#333" stroke-width="3"/>`;
-  svg += `<line x1="${W-mR+10}" y1="${noteY-14}" x2="${W-mR+10}" y2="${noteY+14}" stroke="#333" stroke-width="1.2"/>`;
-  // 拍子記号
+  const slashSX = 5;
   const denom = is8thBase ? 8 : 4;
-  svg += `<text x="22" y="${noteY-2}" text-anchor="middle" font-family="Oswald,sans-serif" font-size="20" font-weight="700" fill="#222">${beats}</text>`;
-  svg += `<text x="22" y="${noteY+16}" text-anchor="middle" font-family="Oswald,sans-serif" font-size="20" font-weight="700" fill="#222">${denom}</text>`;
 
-  const xs = slots.map((_, i) => mL + (i + 0.5) * step);
-  const slashSX = 5;  // スラッシュ符頭の右端オフセット（符尾接続点）
+  // スクロールコンテナ構築
+  container.innerHTML = '';
+  container.style.overflow = 'hidden';
+  const scoreInner = document.createElement('div');
+  scoreInner.id = 'score-scroll-inner';
+  scoreInner.style.transition = 'transform 0.25s ease';
+  container.appendChild(scoreInner);
 
-  // 連桁（ビーム）
-  // is8thBase時: subs=0→8分音符なので旗で表現、subs=1→16分音符なので2本ビーム
-  const needDoubleBeam = subs >= 3 || (is8thBase && subs >= 1);
-  if (subs >= 1) {
-    const beamW = 4.5, beamGap = 6;
-    for (let b = 0; b < beats; b++) {
-      const g0 = b * (1 + subs);
-      const g1 = g0 + subs;
-      const x0 = xs[g0] + slashSX;
-      const x1 = xs[g1] + slashSX;
-      const by = stemTop + 1;
-      svg += `<line x1="${x0}" y1="${by}" x2="${x1}" y2="${by}" stroke="#1a1a2e" stroke-width="${beamW}"/>`;
-      if (needDoubleBeam) {
-        svg += `<line x1="${x0}" y1="${by+beamGap}" x2="${x1}" y2="${by+beamGap}" stroke="#1a1a2e" stroke-width="${beamW}"/>`;
+  for (let rowIdx = 0; rowIdx < numRows; rowIdx++) {
+    const startBeat = rowIdx * beatsPerRow;
+    const endBeat = Math.min(startBeat + beatsPerRow, beats);
+    const subs = rowSubsArray[rowIdx]; // この行の音符密度
+    const needDoubleBeam = subs >= 3 || (is8thBase && subs >= 1);
+
+    const rowSlots = [];
+    for (let b = startBeat; b < endBeat; b++) {
+      rowSlots.push({ isMuted: beatMuted[b], isAccent: (b === 0 || allAccent), beatIdx: b, subIdx: -1,
+                      clickFn: `toggleBeatMute(${b})`, globalIdx: b * (1 + globalSubs) });
+      for (let s = 0; s < subs; s++) {
+        const m = Array.isArray(subMuted[b]) ? !!subMuted[b][s] : false;
+        rowSlots.push({ isMuted: m, isAccent: false, beatIdx: b, subIdx: s,
+                        clickFn: `toggleSubMute(${b},${s})`, globalIdx: b * (1 + globalSubs) + 1 + s });
       }
     }
-  }
 
-  // 音符 / 休符 + ピック記号
-  slots.forEach((slot, i) => {
-    const x = xs[i];
-    const col = 'currentColor';
-    const accentCls = slot.isAccent ? ' score-accent' : '';
-    svg += `<g id="score-slot-${i}" class="score-slot${accentCls}">`;
+    const step = (W - mL - mR) / rowSlots.length;
+    const xs = rowSlots.map((_, i) => mL + (i + 0.5) * step);
+    const isLastRow = rowIdx === numRows - 1;
 
-    // is8thBase時は音符レベルを1段上げる（8分→8分休符、16分→16分休符）
-    const restLevel = is8thBase ? subs + 1 : subs;
-    if (slot.isMuted) {
-      // 連桁グループ内：薄い符尾でビームに接続
-      if (subs >= 1) {
-        svg += `<line x1="${x+slashSX}" y1="${noteY-10}" x2="${x+slashSX}" y2="${stemTop}" stroke="${col}" stroke-width="1.5" opacity="0.15"/>`;
-      }
-      if (restLevel === 0)      svg += restSymbolQuarter(x, noteY, col);
-      else if (restLevel === 1) svg += restSymbolEighth(x, noteY, col);
-      else                      svg += restSymbolSixteenth(x, noteY, col);
+    let svg = `<svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:auto;display:block;">`;
+    svg += `<line x1="${mL-8}" y1="${noteY}" x2="${W-mR+8}" y2="${noteY}" stroke="#444" stroke-width="1.5"/>`;
+    svg += `<line x1="${mL-8}" y1="${noteY-14}" x2="${mL-8}" y2="${noteY+14}" stroke="#333" stroke-width="2.2"/>`;
+    if (isLastRow) {
+      svg += `<line x1="${W-mR+5}" y1="${noteY-14}" x2="${W-mR+5}" y2="${noteY+14}" stroke="#333" stroke-width="3"/>`;
+      svg += `<line x1="${W-mR+10}" y1="${noteY-14}" x2="${W-mR+10}" y2="${noteY+14}" stroke="#333" stroke-width="1.2"/>`;
     } else {
-      // スラッシュ符頭（平行四辺形・2.5倍サイズ）
-      svg += `<polygon points="${x-5},${noteY+10} ${x-1},${noteY+10} ${x+slashSX},${noteY-10} ${x+1},${noteY-10}" fill="${col}"/>`;
-      // 符尾（スラッシュ右上端から上へ）
-      svg += `<line x1="${x+slashSX}" y1="${noteY-10}" x2="${x+slashSX}" y2="${stemTop}" stroke="${col}" stroke-width="1.6"/>`;
-      // 8分音符フラグ（is8thBaseでsubs=0の時：各音符に旗を付ける）
-      if (is8thBase && subs === 0) {
-        const fx = x + slashSX;
-        svg += `<path d="M ${fx},${stemTop} C ${fx+9},${stemTop+5} ${fx+7},${stemTop+12} ${fx+1},${stemTop+14}"
-          stroke="${col}" stroke-width="1.6" fill="none" stroke-linecap="round"/>`;
+      svg += `<line x1="${W-mR+5}" y1="${noteY-14}" x2="${W-mR+5}" y2="${noteY+14}" stroke="#333" stroke-width="1.5"/>`;
+    }
+    // 拍子記号は毎行表示（4/4 固定）
+    svg += `<text x="22" y="${noteY-2}" text-anchor="middle" font-family="Oswald,sans-serif" font-size="20" font-weight="700" fill="#222">${beatsPerRow}</text>`;
+    svg += `<text x="22" y="${noteY+16}" text-anchor="middle" font-family="Oswald,sans-serif" font-size="20" font-weight="700" fill="#222">${denom}</text>`;
+
+    if (subs >= 1) {
+      const beamW = 4.5, beamGap = 6;
+      for (let b = startBeat; b < endBeat; b++) {
+        const localB = b - startBeat;
+        const g0 = localB * (1 + subs);
+        const g1 = g0 + subs;
+        const x0 = xs[g0] + slashSX, x1 = xs[g1] + slashSX;
+        const by = stemTop + 1;
+        svg += `<line x1="${x0}" y1="${by}" x2="${x1}" y2="${by}" stroke="#1a1a2e" stroke-width="${beamW}"/>`;
+        if (needDoubleBeam)
+          svg += `<line x1="${x0}" y1="${by+beamGap}" x2="${x1}" y2="${by+beamGap}" stroke="#1a1a2e" stroke-width="${beamW}"/>`;
       }
-      // ピック記号
-      if (showPick) {
-        const dir = getPickDir(slot.subIdx === -1, slot.subIdx);
-        const py = pickY;
-        const hw = pickSymHW;
-        if (dir === 'down') {
-          svg += `<polyline points="${x-hw},${py+pickSymH} ${x-hw},${py} ${x+hw},${py} ${x+hw},${py+pickSymH}"
-            fill="none" stroke="${col}" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"/>`;
-        } else {
-          svg += `<polyline points="${x-hw},${py} ${x},${py+pickSymH} ${x+hw},${py}"
-            fill="none" stroke="${col}" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"/>`;
+    }
+
+    rowSlots.forEach((slot, i) => {
+      const x = xs[i], col = 'currentColor';
+      const accentCls = slot.isAccent ? ' score-accent' : '';
+      svg += `<g id="score-slot-${slot.globalIdx}" class="score-slot${accentCls}">`;
+      const restLevel = is8thBase ? subs + 1 : subs;
+      if (slot.isMuted) {
+        if (subs >= 1) svg += `<line x1="${x+slashSX}" y1="${noteY-10}" x2="${x+slashSX}" y2="${stemTop}" stroke="${col}" stroke-width="1.5" opacity="0.15"/>`;
+        if (restLevel === 0)      svg += restSymbolQuarter(x, noteY, col);
+        else if (restLevel === 1) svg += restSymbolEighth(x, noteY, col);
+        else                      svg += restSymbolSixteenth(x, noteY, col);
+      } else {
+        svg += `<polygon points="${x-5},${noteY+10} ${x-1},${noteY+10} ${x+slashSX},${noteY-10} ${x+1},${noteY-10}" fill="${col}"/>`;
+        svg += `<line x1="${x+slashSX}" y1="${noteY-10}" x2="${x+slashSX}" y2="${stemTop}" stroke="${col}" stroke-width="1.6"/>`;
+        if (is8thBase && subs === 0) {
+          const fx = x + slashSX;
+          svg += `<path d="M ${fx},${stemTop} C ${fx+9},${stemTop+5} ${fx+7},${stemTop+12} ${fx+1},${stemTop+14}" stroke="${col}" stroke-width="1.6" fill="none" stroke-linecap="round"/>`;
+        }
+        if (showPick) {
+          const dir = getPickDir(slot.subIdx === -1, slot.subIdx);
+          const hw = pickSymHW;
+          if (dir === 'down')
+            svg += `<polyline points="${x-hw},${pickY+pickSymH} ${x-hw},${pickY} ${x+hw},${pickY} ${x+hw},${pickY+pickSymH}" fill="none" stroke="${col}" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"/>`;
+          else
+            svg += `<polyline points="${x-hw},${pickY} ${x},${pickY+pickSymH} ${x+hw},${pickY}" fill="none" stroke="${col}" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"/>`;
         }
       }
-    }
-    svg += '</g>';
-  });
+      svg += '</g>';
+    });
 
-  // クリック判定エリア（透明rect・最前面）
-  slots.forEach((slot, i) => {
-    const x = xs[i];
-    svg += `<rect x="${x - step*0.46}" y="0" width="${step*0.92}" height="${H}"
-              fill="transparent" style="cursor:pointer" onclick="${slot.clickFn}"/>`;
-  });
+    rowSlots.forEach((slot, i) => {
+      const x = xs[i];
+      svg += `<rect x="${x - step*0.46}" y="0" width="${step*0.92}" height="${H}" fill="transparent" style="cursor:pointer" onclick="${slot.clickFn}"/>`;
+    });
 
-  svg += '</svg>';
-  container.innerHTML = svg;
+    svg += '</svg>';
+    const rowDiv = document.createElement('div');
+    if (rowIdx > 0) rowDiv.style.marginTop = '4px';
+    rowDiv.innerHTML = svg;
+    scoreInner.appendChild(rowDiv);
+  }
+
+  // 1行分の高さに制限
+  const firstRow = scoreInner.firstElementChild;
+  if (firstRow) {
+    container.style.height = firstRow.offsetHeight + 'px';
+  }
+  scoreInner.style.transform = 'translateY(0)';
+  _scoreCurrentRow = 0;
+  _scoreNumRows = numRows;
+  _scoreRowStartDots = rowStartDotsArray;
+  _scoreDotsPerRow = 0; // _scoreRowStartDotsで管理するため不要
 }
 
 function setMetroSound(val) {
@@ -3400,6 +3437,7 @@ function getEffectiveStrings() {
 function renderStringButtons() {
   const strings = getEffectiveStrings();
   const container = document.getElementById('string-buttons');
+  if (!container) return;
   container.innerHTML = '';
   strings.slice().reverse().forEach((s, ri) => { const i = strings.length - 1 - ri;
     const btn = document.createElement('button');
@@ -3496,6 +3534,7 @@ function updateTuningHint() {
 
 function initCapoBtns() {
   const container = document.getElementById('capo-btns');
+  if (!container) return;
   for (let i = 0; i <= 7; i++) {
     const btn = document.createElement('button');
     btn.className = 'capo-btn' + (i === 0 ? ' active' : '');
@@ -4078,12 +4117,26 @@ function flashAbcCursor(pos, isAccent) {
       _scrollAbcToWindow(newWindow);
     }
   }
+  // Score表示: 行境界を越えたらスライド
+  if (_scoreNumRows > 1 && _scoreRowStartDots.length > 0) {
+    let newRow = 0;
+    for (let r = _scoreRowStartDots.length - 1; r >= 0; r--) {
+      if (pos >= _scoreRowStartDots[r]) { newRow = r; break; }
+    }
+    newRow = Math.min(newRow, _scoreNumRows - 1);
+    if (newRow !== _scoreCurrentRow) {
+      _scoreCurrentRow = newRow;
+      _scrollScoreToRow(newRow);
+    }
+  }
 }
 
 function clearAbcCursor() {
   document.querySelectorAll('.abc-cdot').forEach(d => d.classList.remove('active', 'accent'));
   _abcCurrentWindow = 0;
   _scrollAbcToWindow(0);
+  _scoreCurrentRow = 0;
+  _scrollScoreToRow(0);
 }
 
 // 小節ウィンドウをスライド（windowStart = 先頭に表示したい小節インデックス）
@@ -4097,6 +4150,20 @@ function _scrollAbcToWindow(windowStart) {
   if (!m0) return;
   const singleH = m0.offsetHeight + 4; // 4 = margin-bottom
   inner.style.transform = `translateY(-${windowStart * singleH}px)`;
+}
+
+// Score表示スクロールウィンドウ
+let _scoreNumRows = 0;
+let _scoreDotsPerRow = 0;
+let _scoreCurrentRow = 0;
+let _scoreRowStartDots = []; // 各行の開始ドットインデックス
+function _scrollScoreToRow(rowIdx) {
+  const inner = document.getElementById('score-scroll-inner');
+  if (!inner) return;
+  const firstRow = inner.firstElementChild;
+  if (!firstRow) return;
+  const rowH = firstRow.offsetHeight + 4;
+  inner.style.transform = `translateY(-${rowIdx * rowH}px)`;
 }
 
 // SVG の viewBox を音符範囲に絞り込むヘルパー（topPad/botPad で上下余白を調整）
@@ -4151,7 +4218,7 @@ function renderAbcScore(slotIdx) {
     scrollWindow.appendChild(scrollInner);
     abcArea.appendChild(scrollWindow);
 
-    const staffW = Math.max(200, abcArea.offsetWidth - 30);
+    const staffW = Math.max(200, window.innerWidth - 60);
     measures.forEach((measure, idx) => {
       const div = document.createElement('div');
       div.id = `abc-m${idx}`;
