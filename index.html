@@ -1047,6 +1047,25 @@
   #beat-indicators.show-pick .beat-sub-dot.muted .pick-sym { display: none; }
 
   /* ===== ALL ACCENT / PICK / BACKBEAT / SCORE ACTIVE BUTTONS ===== */
+  /* BPM直接入力（ダブルクリックで表示） */
+  #bpm-direct-input {
+    font-family: 'Oswald', sans-serif;
+    font-size: 5rem;
+    font-weight: 700;
+    color: #eef0ff;
+    background: transparent;
+    border: none;
+    border-bottom: 2px solid rgba(255,255,255,0.4);
+    text-align: center;
+    width: 220px;
+    outline: none;
+    line-height: 1;
+    padding: 0;
+    -moz-appearance: textfield;
+  }
+  #bpm-direct-input::-webkit-inner-spin-button,
+  #bpm-direct-input::-webkit-outer-spin-button { -webkit-appearance: none; }
+
   /* ===== タップ練習モード ===== */
   #tap-pad {
     display: none;
@@ -1982,7 +2001,7 @@
       </div>
       <div class="tip-item">
         <div class="tip-title">設定は自動保存されます</div>
-        <div class="tip-desc">操作するたびに自動でブラウザに保存されます。リロードしても最後の状態が復元されます。スロットは「＋24曲」ボタンで最大24個まで増やせます。</div>
+        <div class="tip-desc">操作するたびに自動でブラウザに保存されます。リロードしても最後の状態が復元されます。スロット数は12〜48曲まで切り替えられます。BPMの数字をダブルクリック（ダブルタップ）すると直接入力できます。</div>
       </div>
       <div class="tip-item">
         <div class="tip-title">💾 セットリストをファイルに書き出せます</div>
@@ -2023,6 +2042,7 @@
       <div class="metro-main-col">
       <div class="bpm-display">
         <div class="bpm-number" id="bpm-display">120</div>
+        <input type="number" id="bpm-direct-input" min="30" max="240" style="display:none;">
         <div class="bpm-label">BPM</div>
       </div>
 
@@ -2175,12 +2195,15 @@
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;gap:6px;">
           <div class="live-slots-label" style="flex-shrink:0;">練習メニュー</div>
           <div style="display:flex;gap:6px;margin-left:auto;">
-            <button id="metro-expand-btn" onclick="toggleMetroSlotExpand()"
-              style="padding:4px 10px;border:1.5px solid #b0c0d8;border-radius:6px;
+            <select id="metro-expand-btn" onchange="setMetroSlotCount(parseInt(this.value))"
+              style="padding:4px 8px;border:1.5px solid #b0c0d8;border-radius:6px;
                      background:#f0f4fa;color:#2176ae;font-size:0.78rem;font-weight:700;
-                     cursor:pointer;line-height:1;"
-              onmouseover="this.style.background='#dce8f8'"
-              onmouseout="this.style.background='#f0f4fa'" title="12 → 24曲に増やす">＋24曲</button>
+                     cursor:pointer;line-height:1;outline:none;">
+              <option value="12">12曲</option>
+              <option value="24">24曲</option>
+              <option value="36">36曲</option>
+              <option value="48">48曲</option>
+            </select>
             <button onclick="resetMetroSetlist()"
               style="padding:4px 10px;border:1.5px solid #e0b0b0;border-radius:6px;
                      background:#fff5f5;color:#c0392b;font-size:0.78rem;font-weight:700;
@@ -2311,17 +2334,17 @@ let shuffleRatio = 0.67;
 
 // ===== METRO SETLIST =====
 const METRO_LS_KEY = 'tsg-rhythm-setlist';
-let metroSlots         = Array(24).fill(null);
-let metroNames         = Array(24).fill('');
-let metroBeatsArr      = Array(24).fill(4);
-let metroGroovesArr    = Array(24).fill('normal');
-let metroIs8thBaseArr  = Array(24).fill(false);
-let metroShuffleArr    = Array(24).fill(67);
-let metroSoundsArr     = Array(24).fill('beep');
-let metroAllAccentArr  = Array(24).fill(false);
-let metroShowPickArr   = Array(24).fill(false);
-let metroBeatMutedArr  = Array(24).fill(null).map(() => []);
-let metroSubMutedArr   = Array(24).fill(null).map(() => []);
+let metroSlots         = Array(48).fill(null);
+let metroNames         = Array(48).fill('');
+let metroBeatsArr      = Array(48).fill(4);
+let metroGroovesArr    = Array(48).fill('normal');
+let metroIs8thBaseArr  = Array(48).fill(false);
+let metroShuffleArr    = Array(48).fill(67);
+let metroSoundsArr     = Array(48).fill('beep');
+let metroAllAccentArr  = Array(48).fill(false);
+let metroShowPickArr   = Array(48).fill(false);
+let metroBeatMutedArr  = Array(48).fill(null).map(() => []);
+let metroSubMutedArr   = Array(48).fill(null).map(() => []);
 let metroSelectedSlot  = 0;
 let metroSetlistOpen   = false;
 let metroSlotCount     = 12;      // 12 or 24
@@ -2399,19 +2422,20 @@ function loadMetroSetlist() {
   try {
     const s = JSON.parse(localStorage.getItem(METRO_LS_KEY) || 'null');
     if (!s) return;
-    if (Array.isArray(s.slots))        s.slots.forEach((v,i)=>{ if(i<24) metroSlots[i]=v; });
-    if (Array.isArray(s.names))        s.names.forEach((v,i)=>{ if(i<24) metroNames[i]=v||''; });
-    if (Array.isArray(s.beats))        s.beats.forEach((v,i)=>{ if(i<24) metroBeatsArr[i]=v||4; });
-    if (Array.isArray(s.grooves))      s.grooves.forEach((v,i)=>{ if(i<24) metroGroovesArr[i]=v||'normal'; });
-    if (Array.isArray(s.is8thBaseArr)) s.is8thBaseArr.forEach((v,i)=>{ if(i<24) metroIs8thBaseArr[i]=!!v; });
-    if (Array.isArray(s.shuffleRatios))s.shuffleRatios.forEach((v,i)=>{ if(i<24) metroShuffleArr[i]=v||67; });
-    if (Array.isArray(s.sounds))        s.sounds.forEach((v,i)=>{ if(i<24) metroSoundsArr[i]=v||'beep'; });
-    if (Array.isArray(s.allAccentArr))  s.allAccentArr.forEach((v,i)=>{ if(i<24) metroAllAccentArr[i]=!!v; });
-    if (Array.isArray(s.showPickArr))   s.showPickArr.forEach((v,i)=>{ if(i<24) metroShowPickArr[i]=!!v; });
-    if (Array.isArray(s.beatMuted))    s.beatMuted.forEach((v,i)=>{ if(i<24) metroBeatMutedArr[i]=Array.isArray(v)?v.slice():[]; });
-    if (Array.isArray(s.subMuted))     s.subMuted.forEach((v,i)=>{ if(i<24) metroSubMutedArr[i]=Array.isArray(v)?v.map(r=>Array.isArray(r)?r.slice():[]):[] });
+    if (Array.isArray(s.slots))        s.slots.forEach((v,i)=>{ if(i<48) metroSlots[i]=v; });
+    if (Array.isArray(s.names))        s.names.forEach((v,i)=>{ if(i<48) metroNames[i]=v||''; });
+    if (Array.isArray(s.beats))        s.beats.forEach((v,i)=>{ if(i<48) metroBeatsArr[i]=v||4; });
+    if (Array.isArray(s.grooves))      s.grooves.forEach((v,i)=>{ if(i<48) metroGroovesArr[i]=v||'normal'; });
+    if (Array.isArray(s.is8thBaseArr)) s.is8thBaseArr.forEach((v,i)=>{ if(i<48) metroIs8thBaseArr[i]=!!v; });
+    if (Array.isArray(s.shuffleRatios))s.shuffleRatios.forEach((v,i)=>{ if(i<48) metroShuffleArr[i]=v||67; });
+    if (Array.isArray(s.sounds))        s.sounds.forEach((v,i)=>{ if(i<48) metroSoundsArr[i]=v||'beep'; });
+    if (Array.isArray(s.allAccentArr))  s.allAccentArr.forEach((v,i)=>{ if(i<48) metroAllAccentArr[i]=!!v; });
+    if (Array.isArray(s.showPickArr))   s.showPickArr.forEach((v,i)=>{ if(i<48) metroShowPickArr[i]=!!v; });
+    if (Array.isArray(s.beatMuted))    s.beatMuted.forEach((v,i)=>{ if(i<48) metroBeatMutedArr[i]=Array.isArray(v)?v.slice():[]; });
+    if (Array.isArray(s.subMuted))     s.subMuted.forEach((v,i)=>{ if(i<48) metroSubMutedArr[i]=Array.isArray(v)?v.map(r=>Array.isArray(r)?r.slice():[]):[] });
     if (typeof s.selectedSlot==='number') metroSelectedSlot = s.selectedSlot;
-    if (s.slotCount === 24) metroSlotCount = 24;
+    if ([12,24,36,48].includes(s.slotCount)) metroSlotCount = s.slotCount;
+    if (metroSelectedSlot >= metroSlotCount) metroSelectedSlot = 0;
     if (s.categoryKey && RHYTHM_CATEGORIES && RHYTHM_CATEGORIES[s.categoryKey]) {
       _currentCategoryKey = s.categoryKey;
       currentCategoryAbcStrings = RHYTHM_CATEGORIES[s.categoryKey].map(p => p.abc || '');
@@ -2512,33 +2536,26 @@ function renderMetroSlots() {
   initMetroSortable();
 }
 
-function toggleMetroSlotExpand() {
-  if (metroSlotCount === 12) {
-    metroSlotCount = 24;
-    const cont = document.getElementById('metro-slots');
-    for (let i = 12; i < 24; i++) cont.appendChild(makeMetroSlotBtn(i));
-  } else {
-    metroSlotCount = 12;
-    for (let i = 23; i >= 12; i--) {
+function setMetroSlotCount(n) {
+  const cont = document.getElementById('metro-slots');
+  if (!cont) return;
+  if (n > metroSlotCount) {
+    for (let i = metroSlotCount; i < n; i++) cont.appendChild(makeMetroSlotBtn(i));
+  } else if (n < metroSlotCount) {
+    for (let i = metroSlotCount - 1; i >= n; i--) {
       const el = document.getElementById('metro-slot-' + i);
       if (el) el.remove();
     }
-    if (metroSelectedSlot >= 12) selectMetroSlot(0);
+    if (metroSelectedSlot >= n) selectMetroSlot(0);
   }
+  metroSlotCount = n;
   updateMetroExpandBtn();
   saveMetroSetlist();
 }
 
 function updateMetroExpandBtn() {
-  const btn = document.getElementById('metro-expand-btn');
-  if (!btn) return;
-  if (metroSlotCount === 12) {
-    btn.textContent = '＋24曲';
-    btn.title = '12 → 24曲に増やす';
-  } else {
-    btn.textContent = '－12曲';
-    btn.title = '24 → 12曲に減らす';
-  }
+  const sel = document.getElementById('metro-expand-btn');
+  if (sel) sel.value = metroSlotCount;
 }
 
 function selectMetroSlot(idx) {
@@ -2625,11 +2642,13 @@ function autoSaveMetroSlot() {
 }
 
 function duplicateMetroSlot(i) {
-  if (metroSlots[23] !== null || metroNames[23] !== '') {
-    alert('スロットが満杯です（最大24）');
+  if (metroSlots[i] === null && !metroNames[i]) return; // 空スロットの複製は何もしない
+  const last = metroSlotCount - 1;
+  if (metroSlots[last] !== null || metroNames[last] !== '') {
+    alert(`スロットが満杯です（最大${metroSlotCount}）`);
     return;
   }
-  for (let j = 23; j > i + 1; j--) {
+  for (let j = last; j > i + 1; j--) {
     metroSlots[j]        = metroSlots[j-1];
     metroNames[j]        = metroNames[j-1];
     metroBeatsArr[j]     = metroBeatsArr[j-1];
@@ -2688,17 +2707,17 @@ function updateMetroSlotName(val) {
 
 function resetMetroSetlist() {
   if (!confirm('セットリストをリセットしますか？')) return;
-  metroSlots = Array(24).fill(null);
-  metroNames = Array(24).fill('');
-  metroBeatsArr = Array(24).fill(4);
-  metroGroovesArr = Array(24).fill('normal');
-  metroIs8thBaseArr = Array(24).fill(false);
-  metroShuffleArr = Array(24).fill(67);
-  metroSoundsArr = Array(24).fill('beep');
-  metroAllAccentArr = Array(24).fill(false);
-  metroShowPickArr  = Array(24).fill(false);
-  metroBeatMutedArr = Array(24).fill(null).map(() => []);
-  metroSubMutedArr  = Array(24).fill(null).map(() => []);
+  metroSlots = Array(48).fill(null);
+  metroNames = Array(48).fill('');
+  metroBeatsArr = Array(48).fill(4);
+  metroGroovesArr = Array(48).fill('normal');
+  metroIs8thBaseArr = Array(48).fill(false);
+  metroShuffleArr = Array(48).fill(67);
+  metroSoundsArr = Array(48).fill('beep');
+  metroAllAccentArr = Array(48).fill(false);
+  metroShowPickArr  = Array(48).fill(false);
+  metroBeatMutedArr = Array(48).fill(null).map(() => []);
+  metroSubMutedArr  = Array(48).fill(null).map(() => []);
   // autoSaveMetroSlot がリセット直後の配列に現在の設定を書き戻してしまわないようガード
   // （ガードなしだと選択中だったスロットだけデータが残る）
   _applyingSlot = true;
@@ -2755,19 +2774,19 @@ function loadMetroSetlistFile(event) {
   reader.onload = e => {
     try {
       const data = JSON.parse(e.target.result);
-      const n = data.slotCount === 24 ? 24 : 12;
+      const n = [12,24,36,48].includes(data.slotCount) ? data.slotCount : 12;
       metroSlotCount    = n;
-      metroSlots        = Array(24).fill(null);
-      metroNames        = Array(24).fill('');
-      metroBeatsArr     = Array(24).fill(4);
-      metroGroovesArr   = Array(24).fill('normal');
-      metroIs8thBaseArr = Array(24).fill(false);
-      metroShuffleArr   = Array(24).fill(67);
-      metroSoundsArr    = Array(24).fill('beep');
-      metroAllAccentArr = Array(24).fill(false);
-      metroShowPickArr  = Array(24).fill(false);
-      metroBeatMutedArr = Array(24).fill(null).map(()=>[]);
-      metroSubMutedArr  = Array(24).fill(null).map(()=>[]);
+      metroSlots        = Array(48).fill(null);
+      metroNames        = Array(48).fill('');
+      metroBeatsArr     = Array(48).fill(4);
+      metroGroovesArr   = Array(48).fill('normal');
+      metroIs8thBaseArr = Array(48).fill(false);
+      metroShuffleArr   = Array(48).fill(67);
+      metroSoundsArr    = Array(48).fill('beep');
+      metroAllAccentArr = Array(48).fill(false);
+      metroShowPickArr  = Array(48).fill(false);
+      metroBeatMutedArr = Array(48).fill(null).map(()=>[]);
+      metroSubMutedArr  = Array(48).fill(null).map(()=>[]);
       if (Array.isArray(data.slots))        data.slots.forEach((v,i)=>{ if(i<n) metroSlots[i]=v; });
       if (Array.isArray(data.names))        data.names.forEach((v,i)=>{ if(i<n) metroNames[i]=v||''; });
       if (Array.isArray(data.beats))        data.beats.forEach((v,i)=>{ if(i<n) metroBeatsArr[i]=v||4; });
@@ -4814,17 +4833,17 @@ function loadRhythmCategory(categoryKey) {
     return;
   }
 
-  metroSlots        = Array(24).fill(null);
-  metroNames        = Array(24).fill('');
-  metroBeatsArr     = Array(24).fill(4);
-  metroGroovesArr   = Array(24).fill('normal');
-  metroIs8thBaseArr = Array(24).fill(false);
-  metroShuffleArr   = Array(24).fill(67);
-  metroSoundsArr    = Array(24).fill('beep');
-  metroAllAccentArr = Array(24).fill(false);
-  metroShowPickArr  = Array(24).fill(false);
-  metroBeatMutedArr = Array(24).fill(null).map(() => []);
-  metroSubMutedArr  = Array(24).fill(null).map(() => []);
+  metroSlots        = Array(48).fill(null);
+  metroNames        = Array(48).fill('');
+  metroBeatsArr     = Array(48).fill(4);
+  metroGroovesArr   = Array(48).fill('normal');
+  metroIs8thBaseArr = Array(48).fill(false);
+  metroShuffleArr   = Array(48).fill(67);
+  metroSoundsArr    = Array(48).fill('beep');
+  metroAllAccentArr = Array(48).fill(false);
+  metroShowPickArr  = Array(48).fill(false);
+  metroBeatMutedArr = Array(48).fill(null).map(() => []);
+  metroSubMutedArr  = Array(48).fill(null).map(() => []);
 
   patterns.forEach((p, i) => {
     metroSlots[i]        = p.bpm;
@@ -5233,6 +5252,39 @@ if (_refPitchEl) _refPitchEl.textContent = refA4 + ' Hz';
 if (localStorage.getItem('tsg-rhythm-showScore') === '1') {
   setShowScore(true);
 }
+
+// ===== BPM直接入力（ダブルクリック/ダブルタップ） =====
+(function() {
+  const display = document.getElementById('bpm-display');
+  const inp     = document.getElementById('bpm-direct-input');
+  if (!display || !inp) return;
+  function openEdit() {
+    inp.value = bpm;
+    display.style.display = 'none';
+    inp.style.display = 'block';
+    setTimeout(() => { inp.focus(); inp.select(); }, 0);
+  }
+  function closeEdit(save) {
+    if (save) {
+      const v = parseInt(inp.value);
+      if (!isNaN(v)) setBpm(v);
+    }
+    inp.style.display = 'none';
+    display.style.display = '';
+  }
+  inp.addEventListener('keydown', e => {
+    if (e.key === 'Enter')  { e.preventDefault(); closeEdit(true); }
+    if (e.key === 'Escape') { e.preventDefault(); closeEdit(false); }
+  });
+  inp.addEventListener('blur', () => closeEdit(true));
+  display.addEventListener('dblclick', e => { e.preventDefault(); openEdit(); });
+  let _t = 0;
+  display.addEventListener('touchend', e => {
+    const now = Date.now();
+    if (now - _t < 300) { e.preventDefault(); openEdit(); }
+    _t = now;
+  });
+})();
 
 // 読み上げ（タツン）の状態を復元
 setReadoutMode(localStorage.getItem('tsg-rhythm-readout-mode') || 'kizami');
