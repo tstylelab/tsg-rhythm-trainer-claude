@@ -2240,6 +2240,9 @@
 
 <script>
 
+// localStorage書き込みの安全化: 容量満杯・プライベートブラウズ時の例外で処理を止めない
+function lsSet(key, val) { try { localStorage.setItem(key, val); } catch(_) {} }
+
 // ===== METRONOME =====
 let bpm = 120;
 let beats = 4;
@@ -2380,7 +2383,7 @@ function initMetroSortable() {
 }
 
 function saveMetroSetlist() {
-  localStorage.setItem(METRO_LS_KEY, JSON.stringify({
+  lsSet(METRO_LS_KEY, JSON.stringify({
     slots: metroSlots, names: metroNames, beats: metroBeatsArr,
     grooves: metroGroovesArr, is8thBaseArr: metroIs8thBaseArr,
     shuffleRatios: metroShuffleArr,
@@ -2696,8 +2699,12 @@ function resetMetroSetlist() {
   metroShowPickArr  = Array(24).fill(false);
   metroBeatMutedArr = Array(24).fill(null).map(() => []);
   metroSubMutedArr  = Array(24).fill(null).map(() => []);
+  // autoSaveMetroSlot がリセット直後の配列に現在の設定を書き戻してしまわないようガード
+  // （ガードなしだと選択中だったスロットだけデータが残る）
+  _applyingSlot = true;
   setAllAccent(false);
   setShowPick(false);
+  _applyingSlot = false;
   metroSelectedSlot = 0;
   metroSlotCount = 12;
   localStorage.removeItem(METRO_LS_KEY);
@@ -2878,7 +2885,7 @@ function setShowPick(val) {
 
 function setReadout(val) {
   readoutOn = !!val;
-  localStorage.setItem('tsg-rhythm-readout', readoutOn ? '1' : '0');
+  lsSet('tsg-rhythm-readout', readoutOn ? '1' : '0');
   const btn = document.getElementById('readout-btn');
   if (btn) btn.classList.toggle('readout-active', readoutOn);
   const modeRow = document.getElementById('readout-mode-row');
@@ -2890,7 +2897,7 @@ function setReadout(val) {
 
 function setReadoutClick(mode) {
   readoutClick = ['pattern','beat','off'].includes(mode) ? mode : 'beat';
-  localStorage.setItem('tsg-rhythm-readout-click', readoutClick);
+  lsSet('tsg-rhythm-readout-click', readoutClick);
   ['pattern','beat','off'].forEach(m => {
     const b = document.getElementById('readout-click-' + m);
     if (b) b.classList.toggle('selected', m === readoutClick);
@@ -2899,7 +2906,7 @@ function setReadoutClick(mode) {
 
 function setReadoutMode(mode) {
   readoutMode = (mode === 'nobashi') ? 'nobashi' : 'kizami';
-  localStorage.setItem('tsg-rhythm-readout-mode', readoutMode);
+  lsSet('tsg-rhythm-readout-mode', readoutMode);
   const bk = document.getElementById('readout-mode-kizami');
   const bn = document.getElementById('readout-mode-nobashi');
   if (bk) bk.classList.toggle('selected', readoutMode === 'kizami');
@@ -2908,7 +2915,7 @@ function setReadoutMode(mode) {
 
 function setShowScore(val) {
   showScore = !!val;
-  localStorage.setItem('tsg-rhythm-showScore', showScore ? '1' : '0');
+  lsSet('tsg-rhythm-showScore', showScore ? '1' : '0');
   const btn = document.getElementById('score-btn');
   if (btn) btn.classList.toggle('score-active', showScore);
   const scoreEl = document.getElementById('score-container');
@@ -3273,7 +3280,7 @@ function dismissHint(id, lsKey) {
     el.style.opacity = '0';
     setTimeout(() => el.style.display = 'none', 1000);
   }
-  localStorage.setItem(lsKey, '1');
+  lsSet(lsKey, '1');
 }
 
 function initHints() {
@@ -3770,7 +3777,7 @@ function endCalibration(save) {
     const d = _calibDeltas.slice(2).sort((a, b2) => a - b2); // 最初の2回は捨てる
     const med = d[Math.floor(d.length / 2)];
     tapCalibOffset = med;
-    localStorage.setItem('tsg-rhythm-tap-offset', String(med));
+    lsSet('tsg-rhythm-tap-offset', String(med));
     showTapVerdict('v-perfect', '✓', `端末補正 ${Math.round(med * 1000)}ms を保存しました。もう一度タップで練習開始！`);
     const s = document.getElementById('tap-stats');
     if (s) s.textContent = '';
@@ -4031,29 +4038,64 @@ function flashSubDot(beat, subIndex) {
 }
 
 
+// ===== 画面スリープ防止（Wake Lock） =====
+// 再生中はスマホの画面が自動消灯しないようにする。非対応ブラウザでは何もしない
+let _wakeLock = null;
+let _wakeLockPending = false;
+async function updateWakeLock() {
+  if (!('wakeLock' in navigator)) return;
+  const need = metronomeRunning;
+  if (need && !_wakeLock && !_wakeLockPending) {
+    _wakeLockPending = true;
+    try {
+      const wl = await navigator.wakeLock.request('screen');
+      wl.addEventListener('release', () => { if (_wakeLock === wl) _wakeLock = null; });
+      _wakeLock = wl;
+      // 取得を待っている間に停止されていたら即解放
+      if (!metronomeRunning) { try { wl.release(); } catch (e) {} _wakeLock = null; }
+    } catch (e) {} // 省電力モード等で拒否されることがある（実害なし）
+    _wakeLockPending = false;
+  } else if (!need && _wakeLock) {
+    try { _wakeLock.release(); } catch (e) {}
+    _wakeLock = null;
+  }
+}
+// タブが非表示になるとOSがWakeLockを自動解放するため、表示に戻った時に再取得する
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') updateWakeLock();
+});
+
 function toggleMetronome() {
   const btn = document.getElementById('start-btn');
   const card = document.getElementById('metro-card');
   if (!metronomeRunning) {
     const ctx = getAudioCtx();
-    if (ctx.state === 'suspended') ctx.resume();
-    if (currentSound === 'voice' && !voiceLoaded) loadVoiceBuffers();
-    if (readoutOn && !readoutLoaded) loadReadoutBuffers();
-    if (tapModeOn) {
-      resetTapSession();
-      _tapCountInLeft = 4; // 1小節カウントイン
-      const h = document.getElementById('tap-hint');
-      if (h) h.textContent = 'カウントイン…（1・2・3・4 のあとスタート）';
-      if (_tapSweepTimer) clearInterval(_tapSweepTimer);
-      _tapSweepTimer = setInterval(tapSweep, 120);
+    const _startMetro = () => {
+      if (currentSound === 'voice' && !voiceLoaded) loadVoiceBuffers();
+      if (readoutOn && !readoutLoaded) loadReadoutBuffers();
+      if (tapModeOn) {
+        resetTapSession();
+        _tapCountInLeft = 4; // 1小節カウントイン
+        const h = document.getElementById('tap-hint');
+        if (h) h.textContent = 'カウントイン…（1・2・3・4 のあとスタート）';
+        if (_tapSweepTimer) clearInterval(_tapSweepTimer);
+        _tapSweepTimer = setInterval(tapSweep, 120);
+      }
+      nextNoteTime = ctx.currentTime + 0.05;
+      currentBeat = 0;
+      scheduler();
+      metronomeRunning = true;
+      btn.textContent = 'STOP';
+      btn.classList.add('running');
+      if (card) card.classList.add('metro-running');
+      updateWakeLock();
+    };
+    if (ctx.state === 'suspended') {
+      // iOS: resume()の完了を待ってから開始しないと無音のまま走ることがある
+      ctx.resume().then(_startMetro);
+    } else {
+      _startMetro();
     }
-    nextNoteTime = ctx.currentTime + 0.05;
-    currentBeat = 0;
-    scheduler();
-    metronomeRunning = true;
-    btn.textContent = 'STOP';
-    btn.classList.add('running');
-    if (card) card.classList.add('metro-running');
   } else {
     clearTimeout(timerID);
     metronomeRunning = false;
@@ -4067,6 +4109,7 @@ function toggleMetronome() {
       const h = document.getElementById('tap-hint');
       if (h) h.textContent = 'タップ（またはSTART）でもう一度';
     }
+    updateWakeLock();
     btn.textContent = 'START';
     btn.classList.remove('running');
     if (card) card.classList.remove('metro-running');
@@ -4505,7 +4548,7 @@ let refA4 = parseInt(localStorage.getItem('tsg_refA4') || '440', 10);
 function adjustRefPitch(delta) {
   refA4 = Math.min(450, Math.max(430, refA4 + delta));
   document.getElementById('ref-pitch-value').textContent = refA4 + ' Hz';
-  localStorage.setItem('tsg_refA4', refA4);
+  lsSet('tsg_refA4', refA4);
 }
 
 function freqToNote(freq) {
@@ -5235,6 +5278,9 @@ document.addEventListener('keyup', function(e) {
     stopBpmHold();
   }
 });
+
+// キー長押し中にウィンドウからフォーカスが外れるとkeyupが来ず連射が止まらなくなるため
+window.addEventListener('blur', stopBpmHold);
 
 // 最後に使ったタブを復元
 const lastTab = localStorage.getItem('tsg-rhythm-lastTab');
