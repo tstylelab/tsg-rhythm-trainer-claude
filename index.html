@@ -1047,10 +1047,51 @@
   #beat-indicators.show-pick .beat-sub-dot.muted .pick-sym { display: none; }
 
   /* ===== ALL ACCENT / PICK / BACKBEAT / SCORE ACTIVE BUTTONS ===== */
+  /* ===== タップ練習モード ===== */
+  #tap-pad {
+    display: none;
+    margin: 10px 0 6px;
+    min-height: 150px;
+    border-radius: 14px;
+    border: 2px solid #c8ccd6;
+    background: linear-gradient(to bottom, #f7f8fa, #e8eaf0);
+    box-shadow: 0 3px 0 #b8bcc8;
+    cursor: pointer;
+    user-select: none;
+    -webkit-user-select: none;
+    touch-action: manipulation;
+    text-align: center;
+    padding: 12px 10px 16px;
+    box-sizing: border-box;
+    transition: background 0.08s;
+  }
+  #tap-pad:active { background: linear-gradient(to bottom, #eceef4, #dde0e8); }
+  #tap-pad .tap-stats {
+    font-family: 'Barlow Semi Condensed', sans-serif;
+    font-size: 0.95rem; font-weight: 700; color: #555;
+    min-height: 1.3em; letter-spacing: 0.04em;
+  }
+  #tap-pad .tap-verdict {
+    font-family: 'Oswald', sans-serif;
+    font-size: 3.2rem; font-weight: 700; line-height: 1.15;
+    min-height: 1.2em; color: #99a;
+  }
+  #tap-pad .tap-hint {
+    font-size: 0.78rem; color: #888; letter-spacing: 0.03em;
+  }
+  #tap-pad .tap-verdict.v-perfect { color: #27ae60; }
+  #tap-pad .tap-verdict.v-good    { color: #e67e22; }
+  #tap-pad .tap-verdict.v-miss    { color: #c0392b; }
+  /* Score音符への判定色（score-slotはcurrentColorで描画されるためcolorで効く） */
+  .score-slot.tap-perfect { color: #27ae60 !important; }
+  .score-slot.tap-good    { color: #e67e22 !important; }
+  .score-slot.tap-miss    { color: #c0392b !important; }
+
   #all-accent-btn.all-accent-active,
   #pick-btn.pick-active,
   #score-btn.score-active,
-  #readout-btn.readout-active {
+  #readout-btn.readout-active,
+  #tapmode-btn.tapmode-active {
     background: linear-gradient(to bottom, #1a1a2e, #2d2d4e) !important;
     color: #fff !important;
     border-color: #1a1a2e !important;
@@ -1989,6 +2030,13 @@
       <div id="abc-notation-area" style="display:none; margin:4px 0; overflow-x:auto;"></div>
       <div id="abc-beat-cursor" style="display:none; padding:4px 0;"></div>
       <div id="score-container"></div>
+
+      <!-- タップ練習パッド（タップ練習モードON時のみ表示） -->
+      <div id="tap-pad" onpointerdown="tapPadHit(event)" oncontextmenu="return false">
+        <div class="tap-stats" id="tap-stats"></div>
+        <div class="tap-verdict" id="tap-verdict">👆</div>
+        <div class="tap-hint" id="tap-hint">STARTを押すと1小節のカウントの後に始まります。音符のタイミングでここをタップ！（PC: スペースキー）</div>
+      </div>
       <div id="beat-tap-hint" style="text-align:center; font-size:0.71rem; color:#c0c4cc;
            letter-spacing:0.04em; margin-top:5px; margin-bottom:2px;
            transition:opacity 1s ease; opacity:1;">👆 ドットタップでON/OFF &nbsp;·&nbsp; スライドでBPM変更</div>
@@ -2072,6 +2120,18 @@
            onmouseup="this.style.transform='';this.style.boxShadow='0 2px 0 #b8bcc8'"
            ontouchstart="this.style.transform='translateY(2px)';this.style.boxShadow='0 0px 0 #b8bcc8'"
            ontouchend="this.style.transform='';this.style.boxShadow='0 2px 0 #b8bcc8'">🗣 タアンツ</button>
+        <button id="tapmode-btn" onclick="setTapMode(!tapModeOn)" style="
+          flex:1; padding:7px 6px;
+          border:1.5px solid #c8ccd6; border-radius:8px;
+          background:linear-gradient(to bottom,#f7f8fa,#e0e3ea);
+          box-shadow:0 2px 0 #b8bcc8;
+          font-family:'Barlow Semi Condensed',sans-serif; font-size:0.85rem; font-weight:600; color:#555; cursor:pointer;
+          letter-spacing:0.03em; white-space:nowrap;
+          transition:box-shadow 0.1s,transform 0.1s,background 0.15s,color 0.15s;
+        " onmousedown="this.style.transform='translateY(2px)';this.style.boxShadow='0 0px 0 #b8bcc8'"
+           onmouseup="this.style.transform='';this.style.boxShadow='0 2px 0 #b8bcc8'"
+           ontouchstart="this.style.transform='translateY(2px)';this.style.boxShadow='0 0px 0 #b8bcc8'"
+           ontouchend="this.style.transform='';this.style.boxShadow='0 2px 0 #b8bcc8'">👆 タップ</button>
         </div>
       </div>
 
@@ -3614,6 +3674,133 @@ function scheduleReadoutVoice(time, type) {
   osc.start(time); osc.stop(time + dur + 0.02);
 }
 
+// ===== タップ練習モード =====
+// 正解タイミング表のアタック（hit/brush）だけが「叩くべき正解」。ア・ンは叩かない。
+// 判定: ±60ms=◎ / ±120ms=○ / ±150msまで=×(マッチ) / それ以外=余分なタップ×
+let tapModeOn = false;
+let tapTargets = [];        // {time, idx, loopNo, judged, verdict} スケジューラが積む
+let tapExtra = 0;           // 余分なタップ数（ループごとにリセット）
+let _tapLoopNo = 0;
+let _tapLoopStarted = false;
+let _tapCountInLeft = 0;    // カウントイン残り拍数
+let _tapSweepTimer = null;
+
+function setTapMode(val) {
+  tapModeOn = !!val;
+  const btn = document.getElementById('tapmode-btn');
+  if (btn) btn.classList.toggle('tapmode-active', tapModeOn);
+  const pad = document.getElementById('tap-pad');
+  if (pad) pad.style.display = tapModeOn ? 'block' : 'none';
+  if (!tapModeOn && metronomeRunning) toggleMetronome();
+  resetTapSession();
+}
+
+function resetTapSession() {
+  tapTargets = [];
+  tapExtra = 0;
+  _tapLoopNo = 0;
+  _tapLoopStarted = false;
+  _tapCountInLeft = 0;
+  clearTapNoteColors();
+  const v = document.getElementById('tap-verdict');
+  const s = document.getElementById('tap-stats');
+  const h = document.getElementById('tap-hint');
+  if (v) { v.textContent = '👆'; v.className = 'tap-verdict'; }
+  if (s) s.textContent = '';
+  if (h) h.textContent = 'STARTを押すと1小節のカウントの後に始まります。音符のタイミングでここをタップ！（PC: スペースキー）';
+}
+
+function clearTapNoteColors() {
+  document.querySelectorAll('.score-slot.tap-perfect, .score-slot.tap-good, .score-slot.tap-miss')
+    .forEach(g => g.classList.remove('tap-perfect', 'tap-good', 'tap-miss'));
+}
+
+function colorTapNote(idx, cls) {
+  const g = document.getElementById('score-slot-' + idx);
+  if (g) { g.classList.remove('tap-perfect', 'tap-good', 'tap-miss'); g.classList.add(cls); }
+}
+
+function showTapVerdict(cls, big, small) {
+  const v = document.getElementById('tap-verdict');
+  const h = document.getElementById('tap-hint');
+  if (v) { v.textContent = big; v.className = 'tap-verdict ' + cls; }
+  if (h && small !== undefined) h.textContent = small;
+}
+
+// タップ入力（パッド pointerdown / PCはスペースキー）
+function tapPadHit(e) {
+  if (e && e.preventDefault) e.preventDefault();
+  if (!tapModeOn) return;
+  if (!metronomeRunning) { toggleMetronome(); return; } // 停止中のタップ＝スタート
+  if (_tapCountInLeft > 0) return;                      // カウントイン中は判定しない
+  judgeTap(getAudioCtx().currentTime);
+}
+
+// タップ時刻を最寄りの未判定アタックとマッチングして判定
+function judgeTap(tapTime) {
+  let best = null, bestAbs = Infinity;
+  for (const tg of tapTargets) {
+    if (tg.judged) continue;
+    const a = Math.abs(tapTime - tg.time);
+    if (a < bestAbs) { bestAbs = a; best = tg; }
+  }
+  if (!best || bestAbs > 0.15) {
+    tapExtra++;
+    showTapVerdict('v-miss', '×', '余分なタップ');
+    return;
+  }
+  best.judged = true;
+  const d = tapTime - best.time;
+  if (bestAbs <= 0.06) {
+    best.verdict = 'tap-perfect';
+    showTapVerdict('v-perfect', '◎', 'ジャスト！');
+  } else if (bestAbs <= 0.12) {
+    best.verdict = 'tap-good';
+    showTapVerdict('v-good', '○', d < 0 ? '少し早い' : '少し遅い');
+  } else {
+    best.verdict = 'tap-miss';
+    showTapVerdict('v-miss', '×', d < 0 ? '早すぎ' : '遅すぎ');
+  }
+  colorTapNote(best.idx, best.verdict);
+}
+
+// 取りこぼし監視（時間切れの正解を×に）＋古いターゲットの掃除
+function tapSweep() {
+  const now = getAudioCtx().currentTime;
+  tapTargets.forEach(tg => {
+    if (!tg.judged && now > tg.time + 0.15) {
+      tg.judged = true;
+      tg.verdict = 'tap-miss';
+      colorTapNote(tg.idx, 'tap-miss');
+      showTapVerdict('v-miss', '×', '叩き逃し');
+    }
+  });
+  tapTargets = tapTargets.filter(tg => now < tg.time + 3);
+}
+
+// ループ1周の締め（そのループのターゲット集計→スコア表示→表示リセット）
+function finalizeTapLoop(loopNo) {
+  tapSweep(); // 判定漏れを確定させる
+  const mine = tapTargets.filter(tg => tg.loopNo === loopNo);
+  let perfect = 0, good = 0, miss = tapExtra;
+  mine.forEach(tg => {
+    if (tg.verdict === 'tap-perfect') perfect++;
+    else if (tg.verdict === 'tap-good') good++;
+    else miss++;
+  });
+  const total = perfect + good + miss;
+  if (total > 0) {
+    const score = Math.round(100 * (perfect + good * 0.5) / total);
+    const s = document.getElementById('tap-stats');
+    if (s) s.textContent = `◎${perfect}　○${good}　×${miss}　─　${score}点`;
+  }
+  tapExtra = 0;
+  // 表示リセット（次の周ですでに判定済みの音符の色は残す）
+  clearTapNoteColors();
+  tapTargets.filter(tg => tg.loopNo === loopNo + 1 && tg.verdict)
+    .forEach(tg => colorTapNote(tg.idx, tg.verdict));
+}
+
 function scheduler() {
   const ctx = getAudioCtx();
   const interval = 60 / bpm;
@@ -3622,8 +3809,37 @@ function scheduler() {
     const t = nextNoteTime;
     const isAccent = beat === 0;
 
+    // タップ練習: カウントイン（1小節ぶん、クリックのみ）
+    if (_tapCountInLeft > 0) {
+      const cIdx = 4 - _tapCountInLeft;
+      scheduleNote(t, cIdx === 0, cIdx);
+      _tapCountInLeft--;
+      nextNoteTime += interval;
+      continue;
+    }
+
     // 拍内サブ音のオフセット係数（音・フラッシュ・読み上げ共通）
     const subOffs = getSubOffsets();
+
+    // タップ練習: 叩くべきアタック時刻を記録＋ループ境界の集計予約
+    if (tapModeOn) {
+      const tapTable = getTimingTable();
+      const tapBase = beat * (1 + subOffs.length);
+      if (beat === 0) {
+        if (_tapLoopStarted) {
+          const loopNo = _tapLoopNo;
+          setTimeout(() => finalizeTapLoop(loopNo), Math.max(0, (t - ctx.currentTime) * 1000 + 250));
+          _tapLoopNo++;
+        }
+        _tapLoopStarted = true;
+      }
+      const pushTarget = (slotT, idx) => {
+        const ty = tapTable[idx];
+        if (ty === 'hit' || ty === 'brush') tapTargets.push({ time: slotT, idx, loopNo: _tapLoopNo, judged: false, verdict: null });
+      };
+      pushTarget(t, tapBase);
+      subOffs.forEach((f, sj) => pushTarget(t + interval * f, tapBase + 1 + sj));
+    }
 
     // クリック音（タツンON中は readoutClick 設定に従う）
     const clickMode = readoutOn ? readoutClick : 'pattern';
@@ -3724,6 +3940,14 @@ function toggleMetronome() {
     if (ctx.state === 'suspended') ctx.resume();
     if (currentSound === 'voice' && !voiceLoaded) loadVoiceBuffers();
     if (readoutOn && !readoutLoaded) loadReadoutBuffers();
+    if (tapModeOn) {
+      resetTapSession();
+      _tapCountInLeft = 4; // 1小節カウントイン
+      const h = document.getElementById('tap-hint');
+      if (h) h.textContent = 'カウントイン…（1・2・3・4 のあとスタート）';
+      if (_tapSweepTimer) clearInterval(_tapSweepTimer);
+      _tapSweepTimer = setInterval(tapSweep, 120);
+    }
     nextNoteTime = ctx.currentTime + 0.05;
     currentBeat = 0;
     scheduler();
@@ -3736,6 +3960,14 @@ function toggleMetronome() {
     metronomeRunning = false;
     // 鳴りっぱなしの読み上げ音（特に長いター）を止める
     if (_readoutPrev) { try { _readoutPrev.src.stop(); } catch(e) {} _readoutPrev = null; }
+    // タップ練習の後始末（直前のスコア表示は残す）
+    if (_tapSweepTimer) { clearInterval(_tapSweepTimer); _tapSweepTimer = null; }
+    _tapCountInLeft = 0;
+    tapTargets = [];
+    if (tapModeOn) {
+      const h = document.getElementById('tap-hint');
+      if (h) h.textContent = 'タップ（またはSTART）でもう一度';
+    }
     btn.textContent = 'START';
     btn.classList.remove('running');
     if (card) card.classList.remove('metro-running');
@@ -4876,10 +5108,14 @@ document.addEventListener('keydown', function(e) {
 
   if (e.key === ' ' || e.code === 'Space') {
     e.preventDefault();
-    if (document.getElementById('panel-metronome')?.classList.contains('active')) {
-      toggleMetronome();
-    }
+    if (e.repeat) return; // 押しっぱなしの連打を防ぐ
+    if (tapModeOn && metronomeRunning) { tapPadHit(null); return; } // タップ練習中はスペース＝タップ
+    toggleMetronome();
     return;
+  }
+
+  if (e.key === 'Escape') {
+    if (tapModeOn && metronomeRunning) { toggleMetronome(); return; } // タップ練習中の停止
   }
 
   if (e.repeat) return; // キーリピートは無視（holdタイマーが加速を担当）
