@@ -1,0 +1,11 @@
+# 録音の元ファイル（切り出し前・大きい・アプリでは未使用）
+*.m4a
+*.wav.orig
+
+# エディタ・ツール設定
+.claude/
+
+# OS生成ファイル
+Thumbs.db
+.DS_Store
+desktop.ini
