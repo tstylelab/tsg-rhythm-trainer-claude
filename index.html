@@ -2270,6 +2270,16 @@
           font-size:0.88rem; font-weight:700; cursor:pointer;"
           onmouseover="this.style.background='#dce8f8'"
           onmouseout="this.style.background='#f0f4fa'">🔗 URLで共有</button>
+        <div style="display:flex; gap:6px; margin-top:8px;">
+          <button onclick="saveMetroSetlistFile()" style="flex:1; padding:9px;
+            border:1.5px solid #b0c0d8; border-radius:8px; background:#f0f4fa; color:#2176ae;
+            font-size:0.82rem; font-weight:700; cursor:pointer;">💾 ファイルに保存</button>
+          <button onclick="document.getElementById('metro-file-input').click()" style="flex:1; padding:9px;
+            border:1.5px solid #b0c0d8; border-radius:8px; background:#f0f4fa; color:#2176ae;
+            font-size:0.82rem; font-weight:700; cursor:pointer;">📂 ファイルから読込</button>
+          <input type="file" id="metro-file-input" accept=".json" style="display:none"
+            onchange="loadMetroSetlistFile(event)">
+        </div>
 
         <!-- カテゴリ読み込み -->
         <div style="margin-top:14px; border-top:1.5px solid #eee; padding-top:14px;">
@@ -2953,7 +2963,8 @@ function saveMetroSetlistFile() {
     showPickArr: metroShowPickArr,
     slotCount: metroSlotCount,
     beatMuted: metroBeatMutedArr,
-    subMuted: metroSubMutedArr
+    subMuted: metroSubMutedArr,
+    categoryKey: _currentCategoryKey
   };
   const json = JSON.stringify(data, null, 2);
   const blob = new Blob([json], { type: 'application/json' });
@@ -2997,10 +3008,23 @@ function loadMetroSetlistFile(event) {
       if (Array.isArray(data.beatMuted))    data.beatMuted.forEach((v,i)=>{ if(i<n) metroBeatMutedArr[i]=Array.isArray(v)?v.slice():[]; });
       if (Array.isArray(data.subMuted))     data.subMuted.forEach((v,i)=>{ if(i<n) metroSubMutedArr[i]=Array.isArray(v)?v.map(r=>Array.isArray(r)?r.slice():[]):[]; });
       if (data.name) { const ni = document.getElementById('metro-setlist-name'); if(ni) ni.value=data.name; }
+      // カテゴリ（リズム譜の紐付け）を復元
+      const catSel = document.getElementById('rhythm-category-select');
+      if (data.categoryKey && RHYTHM_CATEGORIES[data.categoryKey]) {
+        _currentCategoryKey = data.categoryKey;
+        currentCategoryAbcStrings = RHYTHM_CATEGORIES[data.categoryKey].map(p => p.abc || '');
+        if (catSel) catSel.value = data.categoryKey;
+      } else {
+        _currentCategoryKey = '';
+        currentCategoryAbcStrings = [];
+        if (catSel) catSel.value = '';
+      }
       metroSelectedSlot = 0;
       saveMetroSetlist();
       renderMetroSlots();
       applyMetroSlot(0);
+      renderAbcScore(0);
+      showToast('📂 ファイルから練習メニューを読み込みました');
     } catch(err) { alert('読み込みに失敗しました'); }
   };
   reader.readAsText(file);
@@ -4083,6 +4107,7 @@ let clearedMap = (() => {
   catch(e) { return {}; }
 })();
 let _tapCleanMeasures = 0; // 連続ノーミス小節数
+let _tapCombo = 0;         // 連続◎の数（表示用）
 
 function slotClearKey(i) {
   const name = metroNames[i];
@@ -4138,18 +4163,50 @@ function isStageAllCleared() {
   return cat.every(p => clearedMap[_currentCategoryKey + '/' + p.name]);
 }
 
+// カテゴリ選択のラベルにクリア進捗（n/12・👑）を表示
+function updateCategoryProgress() {
+  const sel = document.getElementById('rhythm-category-select');
+  if (!sel) return;
+  Array.from(sel.options).forEach(opt => {
+    const cat = RHYTHM_CATEGORIES[opt.value];
+    if (!cat || cat.length === 0) return;
+    if (!opt.dataset.base) opt.dataset.base = opt.textContent;
+    const n = cat.filter(p => clearedMap[opt.value + '/' + p.name]).length;
+    opt.textContent = opt.dataset.base + `（${n}/${cat.length}）` + (n === cat.length ? ' 👑' : '');
+  });
+}
+
+// クリア後、次の問題（中身のある次のスロット）へ自動で進む
+function _advanceToNextSlot() {
+  if (!tapModeOn || !metronomeRunning) return; // 手動で止めていたら何もしない
+  let next = -1;
+  for (let j = metroSelectedSlot + 1; j < metroSlotCount; j++) {
+    if (metroSlots[j] !== null || metroNames[j]) { next = j; break; }
+  }
+  if (next < 0) return;
+  toggleMetronome(); // 停止
+  selectMetroSlot(next);
+  renderAbcScore(next);
+  showToast('▶ 次の問題: ' + (metroNames[next] || (next + 1) + '番'));
+  toggleMetronome(); // カウントインから再開
+}
+
 function markSlotCleared(i) {
   const key = slotClearKey(i);
   if (!key) return;
   clearedMap[key] = { bpm: bpm, date: new Date().toISOString().slice(0, 10) };
   lsSet(CLEARS_LS_KEY, JSON.stringify(clearedMap));
   renderMetroSlots();
+  updateCategoryProgress();
   playEffect('clear');
   if (isStageAllCleared()) {
     setTimeout(() => {
       playEffect('stageclear');
       showToast('🏆 ステージ全クリア！おめでとうございます！');
+      if (metronomeRunning) toggleMetronome(); // 全クリアで締め
     }, 1200);
+  } else {
+    setTimeout(_advanceToNextSlot, 2500);
   }
 }
 
@@ -4261,6 +4318,7 @@ function resetTapSession() {
   _tapLoopStarted = false;
   _tapCountInLeft = 0;
   _tapCleanMeasures = 0;
+  _tapCombo = 0;
   clearTapNoteColors();
   const v = document.getElementById('tap-verdict');
   const s = document.getElementById('tap-stats');
@@ -4308,6 +4366,7 @@ function judgeTap(tapTime) {
   }
   if (!best || bestAbs > 0.15) {
     tapExtra++;
+    _tapCombo = 0;
     showTapVerdict('v-miss', '×', '余分なタップ');
     return;
   }
@@ -4315,12 +4374,15 @@ function judgeTap(tapTime) {
   const d = tapTime - best.time;
   if (bestAbs <= 0.06) {
     best.verdict = 'tap-perfect';
-    showTapVerdict('v-perfect', '◎', 'ジャスト！');
+    _tapCombo++;
+    showTapVerdict('v-perfect', '◎', _tapCombo >= 3 ? `ジャスト！ 🔥${_tapCombo}連続` : 'ジャスト！');
   } else if (bestAbs <= 0.12) {
     best.verdict = 'tap-good';
+    _tapCombo = 0;
     showTapVerdict('v-good', '○', d < 0 ? '少し早い' : '少し遅い');
   } else {
     best.verdict = 'tap-miss';
+    _tapCombo = 0;
     showTapVerdict('v-miss', '×', d < 0 ? '早すぎ' : '遅すぎ');
   }
   colorTapNote(best.idx, best.verdict);
@@ -5877,6 +5939,9 @@ if (localStorage.getItem('tsg-rhythm-showScore') === '1') {
     _t = now;
   });
 })();
+
+// カテゴリ選択にクリア進捗を表示
+updateCategoryProgress();
 
 // 読み上げ（タツン）の状態を復元
 setReadoutMode(localStorage.getItem('tsg-rhythm-readout-mode') || 'kizami');
