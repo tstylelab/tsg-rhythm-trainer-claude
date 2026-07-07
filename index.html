@@ -2125,7 +2125,7 @@
             <option value="">— カテゴリを選択 —</option>
             <option value="8th-basic">8分音符 基本</option>
             <option value="8th-advanced">8分音符 応用（準備中）</option>
-            <option value="16th-basic">16分音符 基本（準備中）</option>
+            <option value="16th-basic">16分音符 基本</option>
             <option value="xml-test">XMLテスト（8分音符）</option>
           </select>
         </div>
@@ -4174,7 +4174,36 @@ const RHYTHM_CATEGORIES = {
       abc:'z2c2z2c2' },
   ],
   '8th-advanced': [],
-  '16th-basic':   [],
+  '16th-basic': [
+    { name:'16分音符 全オン',        bpm:60, beats:4, groove:'sixteenth',
+      beatMuted:[false,false,false,false],
+      subMuted:[[false,false,false],[false,false,false],[false,false,false],[false,false,false]],
+      abc:'c/c/c/c/ c/c/c/c/ c/c/c/c/ c/c/c/c/' },
+    { name:'8分＋16分×2（タアタタ）', bpm:60, beats:4, groove:'sixteenth',
+      beatMuted:[false,false,false,false],
+      subMuted:[[true,false,false],[true,false,false],[true,false,false],[true,false,false]],
+      abc:'cc/c/ cc/c/ cc/c/ cc/c/' },
+    { name:'16分×2＋8分（タタタア）', bpm:60, beats:4, groove:'sixteenth',
+      beatMuted:[false,false,false,false],
+      subMuted:[[false,false,true],[false,false,true],[false,false,true],[false,false,true]],
+      abc:'c/c/c c/c/c c/c/c c/c/c' },
+    { name:'16分＋8分＋16分（タタアタ）', bpm:60, beats:4, groove:'sixteenth',
+      beatMuted:[false,false,false,false],
+      subMuted:[[false,true,false],[false,true,false],[false,true,false],[false,true,false]],
+      abc:'c/cc/ c/cc/ c/cc/ c/cc/' },
+    { name:'付点8分＋16分（タアアタ）', bpm:60, beats:4, groove:'sixteenth',
+      beatMuted:[false,false,false,false],
+      subMuted:[[true,true,false],[true,true,false],[true,true,false],[true,true,false]],
+      abc:'c3/2c/ c3/2c/ c3/2c/ c3/2c/' },
+    { name:'16分休符＋16分×3（ンタタタ）', bpm:55, beats:4, groove:'sixteenth',
+      beatMuted:[true,true,true,true],
+      subMuted:[[false,false,false],[false,false,false],[false,false,false],[false,false,false]],
+      abc:'z/c/c/c/ z/c/c/c/ z/c/c/c/ z/c/c/c/' },
+    { name:'4分・16分 ミックス',      bpm:60, beats:4, groove:'sixteenth',
+      beatMuted:[false,false,false,false],
+      subMuted:[[true,true,true],[false,false,false],[true,false,false],[true,true,false]],
+      abc:'c2 c/c/c/c/ cc/c/ c3/2c/' },
+  ],
   'xml-test': [
     { name:'四分音符のみ×2小節',  bpm:90, beats:8, groove:'eighth',
       beatMuted:[false,false,false,false,false,false,false,false],
