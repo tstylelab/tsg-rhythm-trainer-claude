@@ -2083,6 +2083,16 @@
         </div>
       </div>
 
+      <!-- 読み上げ中のクリック音設定（タツンON時のみ表示） -->
+      <div class="beat-row" id="readout-click-row" style="display:none; margin-top:6px;">
+        <div style="display:flex;gap:6px;flex:1;align-items:center;">
+          <span style="font-size:0.72rem;color:#777;font-weight:700;white-space:nowrap;letter-spacing:0.02em;">クリック</span>
+          <button class="groove-btn"          id="readout-click-pattern" onclick="setReadoutClick('pattern')">パターン</button>
+          <button class="groove-btn selected" id="readout-click-beat"    onclick="setReadoutClick('beat')">拍のみ</button>
+          <button class="groove-btn"          id="readout-click-off"     onclick="setReadoutClick('off')">なし</button>
+        </div>
+      </div>
+
 
       <!-- Metro Setlist (折りたたみ) -->
       <button class="setlist-toggle" id="metro-setlist-toggle" onclick="toggleMetroSetlist()">
@@ -2179,6 +2189,7 @@ let showPick   = false;
 let showScore = false;
 let readoutOn = false; // リズム読み上げ（タ・ア・ン・ツ）ON/OFF
 let readoutMode = 'kizami'; // 'kizami'=タアアア（細分ごとに発音） / 'nobashi'=ターーー（伸ばして発音）
+let readoutClick = 'beat'; // タツンON中のクリック音: 'pattern'=リズム通り / 'beat'=拍の頭のみ / 'off'=なし
 
 // ===== VOICE COUNT BUFFERS =====
 const voiceBuffers = {};
@@ -2788,7 +2799,18 @@ function setReadout(val) {
   if (btn) btn.classList.toggle('readout-active', readoutOn);
   const modeRow = document.getElementById('readout-mode-row');
   if (modeRow) modeRow.style.display = readoutOn ? '' : 'none';
+  const clickRow = document.getElementById('readout-click-row');
+  if (clickRow) clickRow.style.display = readoutOn ? '' : 'none';
   if (readoutOn && !readoutLoaded) loadReadoutBuffers(); // 再生開始前に先読み
+}
+
+function setReadoutClick(mode) {
+  readoutClick = ['pattern','beat','off'].includes(mode) ? mode : 'beat';
+  localStorage.setItem('tsg-rhythm-readout-click', readoutClick);
+  ['pattern','beat','off'].forEach(m => {
+    const b = document.getElementById('readout-click-' + m);
+    if (b) b.classList.toggle('selected', m === readoutClick);
+  });
 }
 
 function setReadoutMode(mode) {
@@ -3461,14 +3483,20 @@ function scheduler() {
     // 拍内サブ音のオフセット係数（音・フラッシュ・読み上げ共通）
     const subOffs = getSubOffsets();
 
-    // メインビートを鳴らすか
-    if (!beatMuted[beat]) scheduleNote(t, isAccent, beat);
-
-    // 細分割音（サブミュートチェック付き）
-    const sm = subMuted[beat] || [];
-    subOffs.forEach((f, sj) => {
-      if (!sm[sj]) scheduleSubNote(t + interval * f, beat);
-    });
+    // クリック音（タツンON中は readoutClick 設定に従う）
+    const clickMode = readoutOn ? readoutClick : 'pattern';
+    if (clickMode === 'pattern') {
+      // リズムパターン通りに鳴らす（通常動作）
+      if (!beatMuted[beat]) scheduleNote(t, isAccent, beat);
+      const sm = subMuted[beat] || [];
+      subOffs.forEach((f, sj) => {
+        if (!sm[sj]) scheduleSubNote(t + interval * f, beat);
+      });
+    } else if (clickMode === 'beat') {
+      // 拍の頭だけ鳴らす（足で拍を踏む代わり）。声がリズムを担当する
+      scheduleNote(t, isAccent, beat);
+    }
+    // clickMode === 'off' はクリックなし（声のみ）
 
     // リズム読み上げ: 正解タイミング表に従い、休符(ン)も含め全スロットを発音する
     if (readoutOn) {
@@ -4690,6 +4718,7 @@ if (localStorage.getItem('tsg-rhythm-showScore') === '1') {
 
 // 読み上げ（タツン）の状態を復元
 setReadoutMode(localStorage.getItem('tsg-rhythm-readout-mode') || 'kizami');
+setReadoutClick(localStorage.getItem('tsg-rhythm-readout-click') || 'beat');
 if (localStorage.getItem('tsg-rhythm-readout') === '1') {
   setReadout(true);
 }
