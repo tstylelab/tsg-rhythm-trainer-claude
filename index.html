@@ -2769,6 +2769,7 @@ function selectMetroSlot(idx) {
 
 function applyMetroSlot(idx) {
   _applyingSlot = true;
+  _tapCleanMeasures = 0; // クリア判定のストリークはスロットをまたいで持ち越さない
   // BPM
   if (metroSlots[idx] !== null) setBpm(metroSlots[idx]);
   // 拍子
@@ -5445,6 +5446,9 @@ function loadRhythmCategory(categoryKey) {
   });
 
   metroSelectedSlot = 0;
+  // パターン数に合ったスロット数にする（12問のステージで48枠並ばないように）
+  metroSlotCount = patterns.length <= 12 ? 12 : patterns.length <= 24 ? 24
+                 : patterns.length <= 36 ? 36 : 48;
   _currentCategoryKey = categoryKey;
   currentCategoryAbcStrings = patterns.map(p => p.abc || '');
   saveMetroSetlist();
@@ -5922,14 +5926,9 @@ document.addEventListener('keyup', function(e) {
 // キー長押し中にウィンドウからフォーカスが外れるとkeyupが来ず連射が止まらなくなるため
 window.addEventListener('blur', stopBpmHold);
 
-// 最後に使ったタブを復元
-const lastTab = localStorage.getItem('tsg-rhythm-lastTab');
-if (lastTab && ['metronome','tuner','live'].includes(lastTab)) {
-  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
-  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-  document.getElementById('panel-' + lastTab).classList.add('active');
-  document.querySelector(`.tab-btn[onclick="switchTab('${lastTab}')"]`).classList.add('active');
-}
+// 旧タブUI（メトロノーム/チューナー切替）の復元コードは分岐時にタブ自体が
+// 削除されたため撤去。古いlastTab値が残っているとTypeErrorになっていた。
+localStorage.removeItem('tsg-rhythm-lastTab');
 </script>
 <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
