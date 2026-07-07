@@ -3045,16 +3045,17 @@ function renderScoreView() {
       }
 
       const stems = events.filter(ev => ev.kind !== 'rest');
-      const beatHasBeam = subs >= 1 && !(events.length === 1 && events[0].isFullBeat);
+      const beatHasBeam = subs >= 1 && !(events.length === 1 && events[0].isFullBeat) && stems.length > 0;
+      const firstStemX = stems.length ? stems[0].x : 0;
+      const lastStemX  = stems.length ? stems[stems.length - 1].x : 0;
 
-      // 1本目のビーム（拍全体に渡す。拍まるごと1音符/1休符ならビームなし）
-      if (beatHasBeam) {
-        const x0 = xs[g0] + slashSX, x1 = xs[g0 + subs] + slashSX;
+      // 1本目のビーム（最初の符幹から最後の符幹まで。休符の上や音符の先まで伸ばさない）
+      if (beatHasBeam && stems.length >= 2) {
         const by = stemTop + 1;
-        svg += `<line x1="${x0}" y1="${by}" x2="${x1}" y2="${by}" stroke="#1a1a2e" stroke-width="4.5"/>`;
+        svg += `<line x1="${firstStemX + slashSX}" y1="${by}" x2="${lastStemX + slashSX}" y2="${by}" stroke="#1a1a2e" stroke-width="4.5"/>`;
       }
       // 2本目のビーム（16分音符の区間のみ。隣接する16分同士はつなぎ、孤立はスタブ）
-      if (beatHasBeam && unitBeams >= 2) {
+      if (beatHasBeam && stems.length >= 2 && unitBeams >= 2) {
         const by2 = stemTop + 7;
         stems.forEach((ev, si2) => {
           if (ev.beams < 2) return;
@@ -3080,7 +3081,9 @@ function renderScoreView() {
         const accentCls = slot.isAccent ? ' score-accent' : '';
         svg += `<g id="score-slot-${slot.globalIdx}" class="score-slot${accentCls}">`;
         if (ev.kind === 'rest') {
-          if (beatHasBeam) svg += `<line x1="${x+slashSX}" y1="${noteY-10}" x2="${x+slashSX}" y2="${stemTop}" stroke="${col}" stroke-width="1.5" opacity="0.15"/>`;
+          // ビームの下にある休符だけ薄い符幹を描く（ビーム範囲外の休符には不要）
+          if (beatHasBeam && stems.length >= 2 && x > firstStemX && x < lastStemX)
+            svg += `<line x1="${x+slashSX}" y1="${noteY-10}" x2="${x+slashSX}" y2="${stemTop}" stroke="${col}" stroke-width="1.5" opacity="0.15"/>`;
           const restBeams = ev.isFullBeat ? (is8thBase ? 1 : 0)
                           : (ev.dur === 1 ? unitBeams : Math.max(1, unitBeams - 1));
           if (restBeams === 0)      svg += restSymbolQuarter(x, noteY, col);
@@ -3092,6 +3095,15 @@ function renderScoreView() {
           if (ev.isFullBeat && is8thBase) {
             const fx = x + slashSX;
             svg += `<path d="M ${fx},${stemTop} C ${fx+9},${stemTop+5} ${fx+7},${stemTop+12} ${fx+1},${stemTop+14}" stroke="${col}" stroke-width="1.6" fill="none" stroke-linecap="round"/>`;
+          }
+          // 拍内に符幹が1本だけ（休符＋単独音符）の場合はビームの代わりに旗で描く
+          // （8分=旗1枚、16分=旗2枚）
+          if (beatHasBeam && stems.length === 1 && !ev.isFullBeat) {
+            const fx = x + slashSX;
+            for (let fl = 0; fl < ev.beams; fl++) {
+              const fy = stemTop + fl * 7;
+              svg += `<path d="M ${fx},${fy} C ${fx+9},${fy+5} ${fx+7},${fy+12} ${fx+1},${fy+14}" stroke="${col}" stroke-width="1.6" fill="none" stroke-linecap="round"/>`;
+            }
           }
           // 付点（拍内3ユニット長＝付点8分など）
           if (!ev.isFullBeat && ev.dur === 3) {
