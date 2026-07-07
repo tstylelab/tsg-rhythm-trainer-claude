@@ -26,7 +26,7 @@
 
   /* ===== HEADER ===== */
   header {
-    background: linear-gradient(120deg, #3a2158, #241640);
+    background: linear-gradient(120deg, #2176ae, #14547f);
     padding: 8px 20px 8px;
     text-align: center;
   }
@@ -184,7 +184,7 @@
     text-align: center;
     margin-bottom: 16px;
     margin-top: 0;
-    background: linear-gradient(160deg, #2a1d45, #17102b);
+    background: linear-gradient(160deg, #1a3a52, #0e2536);
     border-radius: 14px;
     padding: 14px 20px 10px;
     border: 1px solid rgba(255,255,255,0.06);
@@ -447,12 +447,12 @@
   }
 
   .btn-primary {
-    background: linear-gradient(to bottom, #47306e, #2d1b4e);
-    box-shadow: 0 3px 0 #180f2c, 0 2px 6px rgba(0,0,0,0.2);
-    border-color: #2d1b4e;
+    background: linear-gradient(to bottom, #2b83bd, #1a5f8a);
+    box-shadow: 0 3px 0 #0e405f, 0 2px 6px rgba(0,0,0,0.2);
+    border-color: #17567d;
     color: #fff;
   }
-  .btn-primary:hover { background: linear-gradient(to bottom, #543a80, #382360); }
+  .btn-primary:hover { background: linear-gradient(to bottom, #3690ca, #21709c); }
 
   .btn-primary.running {
     background: linear-gradient(to bottom, #d9534f, #c0392b);
@@ -479,12 +479,22 @@
 
   /* トレーニング（タップ練習ゲーム）開始ボタン */
   .btn-train {
+    padding: 6px 8px;
     background: linear-gradient(to bottom, #34b56f, #26965a);
     box-shadow: 0 3px 0 #1a6b40, 0 2px 6px rgba(0,0,0,0.15);
     border-color: #1e7d4a;
     color: #fff;
   }
   .btn-train:hover { background: linear-gradient(to bottom, #3cc078, #2aa363); }
+  .train-label {
+    display: block;
+    font-family: 'Oswald', sans-serif;
+    font-size: 0.86rem;
+    font-weight: 600;
+    line-height: 1.06;
+    letter-spacing: 0.12em;
+    text-indent: 0.12em;
+  }
   .btn-train.tapmode-active {
     background: linear-gradient(to bottom, #1e7d4a, #17603a);
     box-shadow: inset 0 2px 6px rgba(0,0,0,0.35), 0 2px 0 #10442a;
@@ -2124,7 +2134,7 @@
 
       <div class="btn-row" style="margin-bottom:6px;">
         <button class="btn btn-primary" id="start-btn" onclick="toggleMetronome()">START</button>
-        <button class="btn btn-train" id="tapmode-btn" onclick="setTapMode(!tapModeOn)" style="font-size:0.95rem;">🎮 トレーニング</button>
+        <button class="btn btn-train" id="tapmode-btn" onclick="setTapMode(!tapModeOn)"><span class="train-label">RHYTHM<br>TRAINER</span></button>
         <button class="btn btn-mute" id="mute-btn" onclick="toggleMute()" style="flex:0.55;">MUTE</button>
       </div>
 
