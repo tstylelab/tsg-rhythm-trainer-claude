@@ -26,7 +26,7 @@
 
   /* ===== HEADER ===== */
   header {
-    background: #1a1a2e;
+    background: linear-gradient(120deg, #3a2158, #241640);
     padding: 8px 20px 8px;
     text-align: center;
   }
@@ -184,7 +184,7 @@
     text-align: center;
     margin-bottom: 16px;
     margin-top: 0;
-    background: linear-gradient(160deg, #1e2035, #141425);
+    background: linear-gradient(160deg, #2a1d45, #17102b);
     border-radius: 14px;
     padding: 14px 20px 10px;
     border: 1px solid rgba(255,255,255,0.06);
@@ -447,12 +447,12 @@
   }
 
   .btn-primary {
-    background: linear-gradient(to bottom, #2e2e50, #1a1a2e);
-    box-shadow: 0 3px 0 #0a0a18, 0 2px 6px rgba(0,0,0,0.2);
-    border-color: #1a1a2e;
+    background: linear-gradient(to bottom, #47306e, #2d1b4e);
+    box-shadow: 0 3px 0 #180f2c, 0 2px 6px rgba(0,0,0,0.2);
+    border-color: #2d1b4e;
     color: #fff;
   }
-  .btn-primary:hover { background: linear-gradient(to bottom, #3a3a62, #252540); }
+  .btn-primary:hover { background: linear-gradient(to bottom, #543a80, #382360); }
 
   .btn-primary.running {
     background: linear-gradient(to bottom, #d9534f, #c0392b);
@@ -476,6 +476,21 @@
     color: #fff;
   }
   .btn-tap:hover { background: linear-gradient(to bottom, #3399de, #2480bc); }
+
+  /* トレーニング（タップ練習ゲーム）開始ボタン */
+  .btn-train {
+    background: linear-gradient(to bottom, #34b56f, #26965a);
+    box-shadow: 0 3px 0 #1a6b40, 0 2px 6px rgba(0,0,0,0.15);
+    border-color: #1e7d4a;
+    color: #fff;
+  }
+  .btn-train:hover { background: linear-gradient(to bottom, #3cc078, #2aa363); }
+  .btn-train.tapmode-active {
+    background: linear-gradient(to bottom, #1e7d4a, #17603a);
+    box-shadow: inset 0 2px 6px rgba(0,0,0,0.35), 0 2px 0 #10442a;
+    border-color: #12502f;
+    transform: translateY(1px);
+  }
 
   .btn-mute {
     background: linear-gradient(to bottom, #ffffff, #e8eaef);
@@ -1118,8 +1133,7 @@
   #all-accent-btn.all-accent-active,
   #pick-btn.pick-active,
   #score-btn.score-active,
-  #readout-btn.readout-active,
-  #tapmode-btn.tapmode-active {
+  #readout-btn.readout-active {
     background: linear-gradient(to bottom, #1a1a2e, #2d2d4e) !important;
     color: #fff !important;
     border-color: #1a1a2e !important;
@@ -2110,8 +2124,8 @@
 
       <div class="btn-row" style="margin-bottom:6px;">
         <button class="btn btn-primary" id="start-btn" onclick="toggleMetronome()">START</button>
-        <button class="btn btn-tap" onclick="tapTempo()">TAP</button>
-        <button class="btn btn-mute" id="mute-btn" onclick="toggleMute()" style="flex:0.6;">MUTE</button>
+        <button class="btn btn-train" id="tapmode-btn" onclick="setTapMode(!tapModeOn)" style="font-size:0.95rem;">🎮 トレーニング</button>
+        <button class="btn btn-mute" id="mute-btn" onclick="toggleMute()" style="flex:0.55;">MUTE</button>
       </div>
 
       <div class="section-label">Sound</div>
@@ -2175,18 +2189,6 @@
            onmouseup="this.style.transform='';this.style.boxShadow='0 2px 0 #b8bcc8'"
            ontouchstart="this.style.transform='translateY(2px)';this.style.boxShadow='0 0px 0 #b8bcc8'"
            ontouchend="this.style.transform='';this.style.boxShadow='0 2px 0 #b8bcc8'">🗣 タアンツ</button>
-        <button id="tapmode-btn" onclick="setTapMode(!tapModeOn)" style="
-          flex:1; padding:7px 6px;
-          border:1.5px solid #c8ccd6; border-radius:8px;
-          background:linear-gradient(to bottom,#f7f8fa,#e0e3ea);
-          box-shadow:0 2px 0 #b8bcc8;
-          font-family:'Barlow Semi Condensed',sans-serif; font-size:0.85rem; font-weight:600; color:#555; cursor:pointer;
-          letter-spacing:0.03em; white-space:nowrap;
-          transition:box-shadow 0.1s,transform 0.1s,background 0.15s,color 0.15s;
-        " onmousedown="this.style.transform='translateY(2px)';this.style.boxShadow='0 0px 0 #b8bcc8'"
-           onmouseup="this.style.transform='';this.style.boxShadow='0 2px 0 #b8bcc8'"
-           ontouchstart="this.style.transform='translateY(2px)';this.style.boxShadow='0 0px 0 #b8bcc8'"
-           ontouchend="this.style.transform='';this.style.boxShadow='0 2px 0 #b8bcc8'">👆 タップ</button>
         </div>
       </div>
 
@@ -4662,19 +4664,8 @@ function toggleMetronome() {
 }
 
 // Tap tempo
-let tapTimes = [];
-function tapTempo() {
-  const now = performance.now();
-  tapTimes.push(now);
-  if (tapTimes.length > 8) tapTimes.shift();
-  const recent = tapTimes.slice(-4);
-  if (recent.length >= 2) {
-    const avg = (recent[recent.length - 1] - recent[0]) / (recent.length - 1);
-    const newBpm = Math.round(60000 / avg);
-    if (newBpm >= 40 && newBpm <= 240) setBpm(newBpm);
-  }
-  if (tapTimes.length === 1) setTimeout(() => { if (tapTimes.length === 1) tapTimes = []; }, 3000);
-}
+// テンポのタップ入力機能はリズムトレーナーでは不要なため削除
+// （STARTの右のボタンは「🎮 トレーニング」= タップ練習ゲームの開始に置き換え）
 
 
 // ===== TUNER =====
