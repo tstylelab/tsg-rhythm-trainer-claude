@@ -2889,9 +2889,13 @@ function restSymbolSixteenth(cx, cy, col) {
          `<circle cx="${cx-5}" cy="${cy+4}" r="3.5" fill="${col}"/>`;
 }
 
+// まとめ表示したスロットの再生ハイライト振り向け先（globalIdx → 表示要素のglobalIdx）
+let _scoreSlotAlias = {};
+
 function renderScoreView() {
   const container = document.getElementById('score-container');
   if (!container || !showScore) return;
+  _scoreSlotAlias = {};
 
   const globalSubs = getSubsPerBeat();
   const beatsPerRow = 4; // 1行 = 4拍（1小節分）
@@ -2972,48 +2976,147 @@ function renderScoreView() {
     svg += `<text x="22" y="${noteY-2}" text-anchor="middle" font-family="Oswald,sans-serif" font-size="20" font-weight="700" fill="#222">${beatsPerRow}</text>`;
     svg += `<text x="22" y="${noteY+16}" text-anchor="middle" font-family="Oswald,sans-serif" font-size="20" font-weight="700" fill="#222">${denom}</text>`;
 
-    if (subs >= 1) {
-      const beamW = 4.5, beamGap = 6;
-      for (let b = startBeat; b < endBeat; b++) {
-        const localB = b - startBeat;
-        const g0 = localB * (1 + subs);
-        const g1 = g0 + subs;
-        const x0 = xs[g0] + slashSX, x1 = xs[g1] + slashSX;
-        const by = stemTop + 1;
-        svg += `<line x1="${x0}" y1="${by}" x2="${x1}" y2="${by}" stroke="#1a1a2e" stroke-width="${beamW}"/>`;
-        if (needDoubleBeam)
-          svg += `<line x1="${x0}" y1="${by+beamGap}" x2="${x1}" y2="${by+beamGap}" stroke="#1a1a2e" stroke-width="${beamW}"/>`;
-      }
-    }
+    // ── 正解タイミング表に基づき、拍ごとに音価をまとめて描画 ──
+    // 伸ばし(sustain)は休符ではなく長い音符として表示し、上段のABC譜面と一致させる
+    const table = getTimingTable();
+    const unitCount = 1 + subs;
+    const unitBeams = is8thBase ? (subs >= 1 ? 2 : 1) : (subs >= 3 ? 2 : (subs >= 1 ? 1 : 0));
+    let prevNoteX = null; // タイ描画用（この行で最後に描いた音符のx）
 
-    rowSlots.forEach((slot, i) => {
-      const x = xs[i], col = 'currentColor';
-      const accentCls = slot.isAccent ? ' score-accent' : '';
-      svg += `<g id="score-slot-${slot.globalIdx}" class="score-slot${accentCls}">`;
-      const restLevel = is8thBase ? subs + 1 : subs;
-      if (slot.isMuted) {
-        if (subs >= 1) svg += `<line x1="${x+slashSX}" y1="${noteY-10}" x2="${x+slashSX}" y2="${stemTop}" stroke="${col}" stroke-width="1.5" opacity="0.15"/>`;
-        if (restLevel === 0)      svg += restSymbolQuarter(x, noteY, col);
-        else if (restLevel === 1) svg += restSymbolEighth(x, noteY, col);
-        else                      svg += restSymbolSixteenth(x, noteY, col);
-      } else {
-        svg += `<polygon points="${x-5},${noteY+10} ${x-1},${noteY+10} ${x+slashSX},${noteY-10} ${x+1},${noteY-10}" fill="${col}"/>`;
-        svg += `<line x1="${x+slashSX}" y1="${noteY-10}" x2="${x+slashSX}" y2="${stemTop}" stroke="${col}" stroke-width="1.6"/>`;
-        if (is8thBase && subs === 0) {
-          const fx = x + slashSX;
-          svg += `<path d="M ${fx},${stemTop} C ${fx+9},${stemTop+5} ${fx+7},${stemTop+12} ${fx+1},${stemTop+14}" stroke="${col}" stroke-width="1.6" fill="none" stroke-linecap="round"/>`;
-        }
-        if (showPick) {
-          const dir = getPickDir(slot.subIdx === -1, slot.subIdx);
-          const hw = pickSymHW;
-          if (dir === 'down')
-            svg += `<polyline points="${x-hw},${pickY+pickSymH} ${x-hw},${pickY} ${x+hw},${pickY} ${x+hw},${pickY+pickSymH}" fill="none" stroke="${col}" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"/>`;
-          else
-            svg += `<polyline points="${x-hw},${pickY} ${x},${pickY+pickSymH} ${x+hw},${pickY}" fill="none" stroke="${col}" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"/>`;
+    for (let b = startBeat; b < endBeat; b++) {
+      const localB = b - startBeat;
+      const g0 = localB * unitCount;
+      const beatSlots = rowSlots.slice(g0, g0 + unitCount);
+      const types = beatSlots.map(si => {
+        const t = table[si.globalIdx];
+        return t !== undefined ? t : (si.isMuted ? 'rest' : 'hit');
+      });
+
+      // スロット列 → イベント列（note=音符 / tie=前拍からの伸ばし / rest=休符）
+      const events = [];
+      let u = 0;
+      while (u < unitCount) {
+        const ty = types[u];
+        if (ty === 'hit' || ty === 'brush') {
+          let d = 1;
+          while (u + d < unitCount && types[u + d] === 'sustain') d++;
+          events.push({ kind: 'note', start: u, dur: d });
+          u += d;
+        } else if (ty === 'sustain') {
+          let d = 1;
+          while (u + d < unitCount && types[u + d] === 'sustain') d++;
+          events.push({ kind: 'tie', start: u, dur: d });
+          u += d;
+        } else {
+          let d = 1;
+          while (u + d < unitCount && types[u + d] === 'rest') d++;
+          if (d === unitCount) {
+            events.push({ kind: 'rest', start: u, dur: d });
+          } else {
+            // 拍の中間境界をまたがないよう分割（付点休符を避ける）
+            const mid = Math.ceil(unitCount / 2);
+            let pos = u, remain = d;
+            while (remain > 0) {
+              const take = Math.min(remain, pos < mid ? mid - pos : unitCount - pos);
+              events.push({ kind: 'rest', start: pos, dur: take });
+              pos += take; remain -= take;
+            }
+          }
+          u += d;
         }
       }
-      svg += '</g>';
-    });
+
+      events.forEach(ev => {
+        ev.slot = beatSlots[ev.start];
+        ev.x = xs[g0 + ev.start];
+        ev.isFullBeat = (ev.dur === unitCount);
+        ev.beams = (ev.kind === 'rest' || ev.isFullBeat) ? 0
+                 : (ev.dur === 1 ? unitBeams : Math.max(0, unitBeams - 1));
+      });
+
+      // 再生ハイライトの振り向け: この拍の全グローバルスロット（表示されない細分も含む）を
+      // 時間的にそのスロットを含むイベントの表示要素にマップする
+      const gBase = b * (1 + globalSubs);
+      for (let j = 0; j <= globalSubs; j++) {
+        const posU = j * unitCount / (globalSubs + 1); // 表示ユニット座標に換算
+        let cover = events[0];
+        for (const e of events) { if (e.start <= posU + 1e-6) cover = e; else break; }
+        if (cover && cover.slot.globalIdx !== gBase + j) _scoreSlotAlias[gBase + j] = cover.slot.globalIdx;
+      }
+
+      const stems = events.filter(ev => ev.kind !== 'rest');
+      const beatHasBeam = subs >= 1 && !(events.length === 1 && events[0].isFullBeat);
+
+      // 1本目のビーム（拍全体に渡す。拍まるごと1音符/1休符ならビームなし）
+      if (beatHasBeam) {
+        const x0 = xs[g0] + slashSX, x1 = xs[g0 + subs] + slashSX;
+        const by = stemTop + 1;
+        svg += `<line x1="${x0}" y1="${by}" x2="${x1}" y2="${by}" stroke="#1a1a2e" stroke-width="4.5"/>`;
+      }
+      // 2本目のビーム（16分音符の区間のみ。隣接する16分同士はつなぎ、孤立はスタブ）
+      if (beatHasBeam && unitBeams >= 2) {
+        const by2 = stemTop + 7;
+        stems.forEach((ev, si2) => {
+          if (ev.beams < 2) return;
+          const nx = stems[si2 + 1];
+          const pv = stems[si2 - 1];
+          const rightFull = nx && nx.beams >= 2 && nx.start === ev.start + ev.dur;
+          const leftFull  = pv && pv.beams >= 2 && pv.start + pv.dur === ev.start;
+          if (rightFull) {
+            svg += `<line x1="${ev.x + slashSX}" y1="${by2}" x2="${nx.x + slashSX}" y2="${by2}" stroke="#1a1a2e" stroke-width="4.5"/>`;
+          } else if (!leftFull) {
+            const stubLeft = !!(pv && pv.start + pv.dur === ev.start); // 前の符幹に隣接していれば左向き
+            const sx = ev.x + slashSX;
+            const ex = sx + (stubLeft ? -0.5 : 0.5) * step;
+            svg += `<line x1="${sx}" y1="${by2}" x2="${ex}" y2="${by2}" stroke="#1a1a2e" stroke-width="4.5"/>`;
+          }
+        });
+      }
+
+      // イベント描画
+      events.forEach(ev => {
+        const x = ev.x, col = 'currentColor';
+        const slot = ev.slot;
+        const accentCls = slot.isAccent ? ' score-accent' : '';
+        svg += `<g id="score-slot-${slot.globalIdx}" class="score-slot${accentCls}">`;
+        if (ev.kind === 'rest') {
+          if (beatHasBeam) svg += `<line x1="${x+slashSX}" y1="${noteY-10}" x2="${x+slashSX}" y2="${stemTop}" stroke="${col}" stroke-width="1.5" opacity="0.15"/>`;
+          const restBeams = ev.isFullBeat ? (is8thBase ? 1 : 0)
+                          : (ev.dur === 1 ? unitBeams : Math.max(1, unitBeams - 1));
+          if (restBeams === 0)      svg += restSymbolQuarter(x, noteY, col);
+          else if (restBeams === 1) svg += restSymbolEighth(x, noteY, col);
+          else                      svg += restSymbolSixteenth(x, noteY, col);
+        } else {
+          svg += `<polygon points="${x-5},${noteY+10} ${x-1},${noteY+10} ${x+slashSX},${noteY-10} ${x+1},${noteY-10}" fill="${col}"/>`;
+          svg += `<line x1="${x+slashSX}" y1="${noteY-10}" x2="${x+slashSX}" y2="${stemTop}" stroke="${col}" stroke-width="1.6"/>`;
+          if (ev.isFullBeat && is8thBase) {
+            const fx = x + slashSX;
+            svg += `<path d="M ${fx},${stemTop} C ${fx+9},${stemTop+5} ${fx+7},${stemTop+12} ${fx+1},${stemTop+14}" stroke="${col}" stroke-width="1.6" fill="none" stroke-linecap="round"/>`;
+          }
+          // 付点（拍内3ユニット長＝付点8分など）
+          if (!ev.isFullBeat && ev.dur === 3) {
+            svg += `<circle cx="${x+10}" cy="${noteY+6}" r="2" fill="${col}"/>`;
+          }
+          // タイ（前拍からの伸ばし）
+          if (ev.kind === 'tie') {
+            const tx0 = (prevNoteX !== null) ? prevNoteX + 2 : mL - 4;
+            const tx1 = x - 3;
+            const tyv = noteY + 12;
+            svg += `<path d="M ${tx0},${tyv} Q ${(tx0+tx1)/2},${tyv+7} ${tx1},${tyv}" stroke="${col}" stroke-width="1.6" fill="none"/>`;
+          }
+          if (showPick && ev.kind === 'note') {
+            const dir = getPickDir(slot.subIdx === -1, slot.subIdx);
+            const hw = pickSymHW;
+            if (dir === 'down')
+              svg += `<polyline points="${x-hw},${pickY+pickSymH} ${x-hw},${pickY} ${x+hw},${pickY} ${x+hw},${pickY+pickSymH}" fill="none" stroke="${col}" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"/>`;
+            else
+              svg += `<polyline points="${x-hw},${pickY} ${x},${pickY+pickSymH} ${x+hw},${pickY}" fill="none" stroke="${col}" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"/>`;
+          }
+          prevNoteX = x;
+        }
+        svg += '</g>';
+      });
+    }
 
     rowSlots.forEach((slot, i) => {
       const x = xs[i];
@@ -3550,10 +3653,11 @@ function flashBeat(beat) {
     if (d) d.classList.toggle('active', i === beat);
   }
 
-  // スコアビュー：該当スロットをハイライト
+  // スコアビュー：該当スロットをハイライト（まとめ表示分はエイリアスで振り向け）
   if (showScore) {
     const subs = getSubsPerBeat();
-    const slotIdx = beat * (1 + subs);
+    let slotIdx = beat * (1 + subs);
+    if (_scoreSlotAlias[slotIdx] !== undefined) slotIdx = _scoreSlotAlias[slotIdx];
     document.querySelectorAll('.score-slot').forEach(g => g.classList.remove('score-active'));
     const g = document.getElementById('score-slot-' + slotIdx);
     if (g) g.classList.add('score-active');
@@ -3581,10 +3685,11 @@ function flashSubDot(beat, subIndex) {
     flashAbcCursor(beat * (subs + 1) + 1 + subIndex, false);
   }
 
-  // スコアビュー：該当サブスロットをハイライト
+  // スコアビュー：該当サブスロットをハイライト（まとめ表示分はエイリアスで振り向け）
   if (showScore) {
     const subs = getSubsPerBeat();
-    const slotIdx = beat * (1 + subs) + 1 + subIndex;
+    let slotIdx = beat * (1 + subs) + 1 + subIndex;
+    if (_scoreSlotAlias[slotIdx] !== undefined) slotIdx = _scoreSlotAlias[slotIdx];
     document.querySelectorAll('.score-slot').forEach(g => g.classList.remove('score-active'));
     const g = document.getElementById('score-slot-' + slotIdx);
     if (g) g.classList.add('score-active');
