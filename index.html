@@ -3549,6 +3549,13 @@ function scheduleReadoutSlot(time, table, idx) {
   const type = table[idx];
   if (readoutMode === 'nobashi') {
     if (type === 'sustain') return; // 前のターが鳴り続けている区間
+    if (type === 'rest') {
+      // 伸ばしモードでは休符も音価どおり1回だけ「ン」（例: 四分休符=ン×1）。
+      // ただし拍の頭では言い直す（拍をまたぐ休符で拍を見失わないため）
+      const spb = 1 + getSubsPerBeat();
+      const prev = table[(idx - 1 + table.length) % table.length];
+      if (idx % spb !== 0 && prev === 'rest') return;
+    }
     if (type === 'hit' && table[(idx + 1) % table.length] === 'sustain') {
       scheduleReadoutVoice(time, 'hitLong');
       return;
