@@ -1066,6 +1066,15 @@
   #bpm-direct-input::-webkit-inner-spin-button,
   #bpm-direct-input::-webkit-outer-spin-button { -webkit-appearance: none; }
 
+  /* クリア済みスロットの⭐バッジ */
+  .metro-slot-star {
+    position: absolute;
+    top: 2px;
+    right: 20px;
+    font-size: 0.72rem;
+    pointer-events: none;
+  }
+
   /* ===== タップ練習モード ===== */
   #tap-pad {
     display: none;
@@ -2698,6 +2707,13 @@ function makeMetroSlotBtn(i) {
   // （共有URL・JSONファイル由来の曲名にタグが含まれていた場合のスクリプト注入防止）
   const nameDiv = btn.querySelector('.metro-slot-name');
   if (nameDiv) nameDiv.textContent = name;
+  // クリア済みなら⭐バッジ
+  if (typeof isSlotCleared === 'function' && isSlotCleared(i)) {
+    const star = document.createElement('span');
+    star.className = 'metro-slot-star';
+    star.textContent = '⭐';
+    btn.appendChild(star);
+  }
   return btn;
 }
 
@@ -4050,6 +4066,46 @@ let _tapLoopStarted = false;
 let _tapCountInLeft = 0;    // カウントイン残り拍数
 let _tapSweepTimer = null;
 
+// ===== スロットクリア（ゲーム性） =====
+// タップ練習で「連続 CLEAR_MEASURES 小節ノーミス（×ゼロ）」を基準テンポ
+// （スロットの保存BPM）以上で達成するとクリア。カテゴリ＋パターン名で記録するため、
+// 並べ替え・リスト切替・カテゴリ再読込でもクリア状態は消えない。
+const CLEAR_MEASURES = 4;
+const CLEARS_LS_KEY = 'tsg-rhythm-clears';
+let clearedMap = (() => {
+  try { return JSON.parse(localStorage.getItem(CLEARS_LS_KEY) || '{}') || {}; }
+  catch(e) { return {}; }
+})();
+let _tapCleanMeasures = 0; // 連続ノーミス小節数
+
+function slotClearKey(i) {
+  const name = metroNames[i];
+  if (!name) return null; // 名前のないスロットはクリア対象外
+  return (_currentCategoryKey || 'custom') + '/' + name;
+}
+
+// 基準テンポはカテゴリ定義のBPMから取る。
+// （スロットのBPMはスライダー操作の自動保存で書き変わるため基準にできない）
+function slotBaseBpm(i) {
+  const cat = RHYTHM_CATEGORIES[_currentCategoryKey];
+  if (!cat) return null;
+  const p = cat.find(pt => pt.name === metroNames[i]);
+  return p ? p.bpm : null;
+}
+
+function isSlotCleared(i) {
+  const key = slotClearKey(i);
+  return !!(key && clearedMap[key]);
+}
+
+function markSlotCleared(i) {
+  const key = slotClearKey(i);
+  if (!key) return;
+  clearedMap[key] = { bpm: bpm, date: new Date().toISOString().slice(0, 10) };
+  lsSet(CLEARS_LS_KEY, JSON.stringify(clearedMap));
+  renderMetroSlots();
+}
+
 // ===== タイミング補正（キャリブレーション） =====
 // 端末ごとの系統遅延（音声出力＋タッチ入力）。タップ時刻からこの値を引いて判定する。
 // 未計測時は AudioContext.outputLatency で自動推定。
@@ -4157,6 +4213,7 @@ function resetTapSession() {
   _tapLoopNo = 0;
   _tapLoopStarted = false;
   _tapCountInLeft = 0;
+  _tapCleanMeasures = 0;
   clearTapNoteColors();
   const v = document.getElementById('tap-verdict');
   const s = document.getElementById('tap-stats');
@@ -4250,7 +4307,31 @@ function finalizeTapLoop(loopNo) {
   if (total > 0) {
     const score = Math.round(100 * (perfect + good * 0.5) / total);
     const s = document.getElementById('tap-stats');
-    if (s) s.textContent = `◎${perfect}　○${good}　×${miss}　─　${score}点`;
+    // クリア判定: ×ゼロの周はクリーン小節を積み上げ、1つでも×が出たらリセット
+    const slotIdx2 = metroSelectedSlot;
+    const alreadyCleared = isSlotCleared(slotIdx2);
+    const measuresPerLoop = Math.max(1, Math.round(beats / 4));
+    const baseBpm = slotBaseBpm(slotIdx2); // 基準テンポ（カテゴリ定義のBPM）
+    if (miss === 0) {
+      _tapCleanMeasures += measuresPerLoop;
+      if (!alreadyCleared && _tapCleanMeasures >= CLEAR_MEASURES &&
+          (baseBpm === null || bpm >= baseBpm)) {
+        markSlotCleared(slotIdx2);
+        showTapVerdict('v-perfect', '🎉 クリア！', `連続${CLEAR_MEASURES}小節ノーミス達成！`);
+        showToast('🎉「' + (metroNames[slotIdx2] || 'このパターン') + '」をクリアしました！');
+        if (s) s.textContent = `◎${perfect}　○${good}　×0　─　${score}点　⭐クリア済み`;
+        tapExtra = 0;
+        clearTapNoteColors();
+        return;
+      }
+      const streakInfo = alreadyCleared ? '⭐クリア済み'
+        : (baseBpm !== null && bpm < baseBpm) ? `基準テンポ${baseBpm}未満（クリア判定外）`
+        : `連続クリーン ${Math.min(_tapCleanMeasures, CLEAR_MEASURES)}/${CLEAR_MEASURES}小節`;
+      if (s) s.textContent = `◎${perfect}　○${good}　×0　─　${score}点　${streakInfo}`;
+    } else {
+      _tapCleanMeasures = 0;
+      if (s) s.textContent = `◎${perfect}　○${good}　×${miss}　─　${score}点`;
+    }
   }
   tapExtra = 0;
   // 表示リセット（次の周ですでに判定済みの音符の色は残す）
