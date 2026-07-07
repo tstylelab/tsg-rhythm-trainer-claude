@@ -2036,6 +2036,12 @@
         <div class="tap-stats" id="tap-stats"></div>
         <div class="tap-verdict" id="tap-verdict">👆</div>
         <div class="tap-hint" id="tap-hint">STARTを押すと1小節のカウントの後に始まります。音符のタイミングでここをタップ！（PC: スペースキー）</div>
+        <div style="margin-top:10px;">
+          <button id="tap-calib-btn" onpointerdown="event.stopPropagation()" onclick="toggleCalibration(event)"
+            style="padding:4px 12px; font-size:0.75rem; color:#666; background:#fff;
+                   border:1px solid #ccd0da; border-radius:6px; cursor:pointer;">⏱ タイミング補正</button>
+          <span id="tap-calib-info" style="font-size:0.72rem; color:#999; margin-left:8px;"></span>
+        </div>
       </div>
       <div id="beat-tap-hint" style="text-align:center; font-size:0.71rem; color:#c0c4cc;
            letter-spacing:0.04em; margin-top:5px; margin-bottom:2px;
@@ -3685,14 +3691,105 @@ let _tapLoopStarted = false;
 let _tapCountInLeft = 0;    // カウントイン残り拍数
 let _tapSweepTimer = null;
 
+// ===== タイミング補正（キャリブレーション） =====
+// 端末ごとの系統遅延（音声出力＋タッチ入力）。タップ時刻からこの値を引いて判定する。
+// 未計測時は AudioContext.outputLatency で自動推定。
+let tapCalibOffset = (() => {
+  const v = localStorage.getItem('tsg-rhythm-tap-offset');
+  return v === null ? null : parseFloat(v);
+})();
+let calibOn = false;
+let _calibTimer = null, _calibNext = 0, _calibClicks = [], _calibDeltas = [];
+const CALIB_TAPS = 10;      // 収集タップ数（最初の2回は捨てて中央値を取る）
+
+function effectiveTapOffset() {
+  if (tapCalibOffset !== null && isFinite(tapCalibOffset)) return tapCalibOffset;
+  const ctx = getAudioCtx();
+  return ctx.outputLatency || ctx.baseLatency || 0;
+}
+
+function updateCalibInfo() {
+  const el = document.getElementById('tap-calib-info');
+  if (!el) return;
+  el.textContent = (tapCalibOffset !== null && isFinite(tapCalibOffset))
+    ? `補正: ${Math.round(tapCalibOffset * 1000)}ms`
+    : `未計測（自動推定: ${Math.round(effectiveTapOffset() * 1000)}ms）`;
+}
+
+function toggleCalibration(e) {
+  if (e && e.stopPropagation) e.stopPropagation();
+  if (calibOn) endCalibration(false);
+  else startCalibration();
+}
+
+function startCalibration() {
+  if (metronomeRunning) toggleMetronome();
+  calibOn = true;
+  _calibClicks = [];
+  _calibDeltas = [];
+  const ctx = getAudioCtx();
+  if (ctx.state === 'suspended') ctx.resume();
+  _calibNext = ctx.currentTime + 0.5;
+  showTapVerdict('', '⏱', `クリックに合わせて${CALIB_TAPS}回タップしてください`);
+  const s = document.getElementById('tap-stats');
+  if (s) s.textContent = `タイミング補正中… 0/${CALIB_TAPS}`;
+  const b = document.getElementById('tap-calib-btn');
+  if (b) b.textContent = '✕ 補正を中止';
+  // 4分音符クリック（BPM90固定）を専用ループで鳴らす
+  _calibTimer = setInterval(() => {
+    const c = getAudioCtx();
+    while (_calibNext < c.currentTime + 0.15) {
+      scheduleNote(_calibNext, true, 0);
+      _calibClicks.push(_calibNext);
+      _calibNext += 60 / 90;
+    }
+  }, 25);
+}
+
+function calibTapAt(tapTime) {
+  let best = null, bestAbs = Infinity;
+  for (const ct of _calibClicks) {
+    const a = Math.abs(tapTime - ct);
+    if (a < bestAbs) { bestAbs = a; best = ct; }
+  }
+  if (best === null || bestAbs > 0.3) return; // クリックからかけ離れたタップは無視
+  _calibDeltas.push(tapTime - best);
+  const n = _calibDeltas.length;
+  const s = document.getElementById('tap-stats');
+  if (s) s.textContent = `タイミング補正中… ${n}/${CALIB_TAPS}`;
+  showTapVerdict('v-good', '・'.repeat(Math.min(n, CALIB_TAPS)), undefined);
+  if (n >= CALIB_TAPS) endCalibration(true);
+}
+
+function endCalibration(save) {
+  calibOn = false;
+  if (_calibTimer) { clearInterval(_calibTimer); _calibTimer = null; }
+  const b = document.getElementById('tap-calib-btn');
+  if (b) b.textContent = '⏱ タイミング補正';
+  if (save && _calibDeltas.length > 2) {
+    const d = _calibDeltas.slice(2).sort((a, b2) => a - b2); // 最初の2回は捨てる
+    const med = d[Math.floor(d.length / 2)];
+    tapCalibOffset = med;
+    localStorage.setItem('tsg-rhythm-tap-offset', String(med));
+    showTapVerdict('v-perfect', '✓', `端末補正 ${Math.round(med * 1000)}ms を保存しました。もう一度タップで練習開始！`);
+    const s = document.getElementById('tap-stats');
+    if (s) s.textContent = '';
+  } else {
+    showTapVerdict('', '👆', '補正を中止しました');
+  }
+  updateCalibInfo();
+}
+
 function setTapMode(val) {
   tapModeOn = !!val;
   const btn = document.getElementById('tapmode-btn');
   if (btn) btn.classList.toggle('tapmode-active', tapModeOn);
   const pad = document.getElementById('tap-pad');
   if (pad) pad.style.display = tapModeOn ? 'block' : 'none';
+  if (!tapModeOn && calibOn) endCalibration(false);
   if (!tapModeOn && metronomeRunning) toggleMetronome();
   resetTapSession();
+  if (tapModeOn) updateCalibInfo();
 }
 
 function resetTapSession() {
@@ -3731,12 +3828,14 @@ function showTapVerdict(cls, big, small) {
 function tapPadHit(e) {
   if (e && e.preventDefault) e.preventDefault();
   if (!tapModeOn) return;
+  const ctx = getAudioCtx();
+  if (calibOn) { calibTapAt(ctx.currentTime); return; }  // 補正計測中
   if (!metronomeRunning) { toggleMetronome(); return; } // 停止中のタップ＝スタート
   if (_tapCountInLeft > 0) return;                      // カウントイン中は判定しない
-  judgeTap(getAudioCtx().currentTime);
+  judgeTap(ctx.currentTime - effectiveTapOffset());      // 端末遅延を補正して判定
 }
 
-// タップ時刻を最寄りの未判定アタックとマッチングして判定
+// タップ時刻（補正済み）を最寄りの未判定アタックとマッチングして判定
 function judgeTap(tapTime) {
   let best = null, bestAbs = Infinity;
   for (const tg of tapTargets) {
@@ -5109,12 +5208,13 @@ document.addEventListener('keydown', function(e) {
   if (e.key === ' ' || e.code === 'Space') {
     e.preventDefault();
     if (e.repeat) return; // 押しっぱなしの連打を防ぐ
-    if (tapModeOn && metronomeRunning) { tapPadHit(null); return; } // タップ練習中はスペース＝タップ
+    if (tapModeOn && (metronomeRunning || calibOn)) { tapPadHit(null); return; } // タップ練習中・補正中はスペース＝タップ
     toggleMetronome();
     return;
   }
 
   if (e.key === 'Escape') {
+    if (calibOn) { endCalibration(false); return; }                  // 補正の中止
     if (tapModeOn && metronomeRunning) { toggleMetronome(); return; } // タップ練習中の停止
   }
 
