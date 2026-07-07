@@ -1049,7 +1049,8 @@
   /* ===== ALL ACCENT / PICK / BACKBEAT / SCORE ACTIVE BUTTONS ===== */
   #all-accent-btn.all-accent-active,
   #pick-btn.pick-active,
-  #score-btn.score-active {
+  #score-btn.score-active,
+  #readout-btn.readout-active {
     background: linear-gradient(to bottom, #1a1a2e, #2d2d4e) !important;
     color: #fff !important;
     border-color: #1a1a2e !important;
@@ -2059,6 +2060,18 @@
            onmouseup="this.style.transform='';this.style.boxShadow='0 2px 0 #b8bcc8'"
            ontouchstart="this.style.transform='translateY(2px)';this.style.boxShadow='0 0px 0 #b8bcc8'"
            ontouchend="this.style.transform='';this.style.boxShadow='0 2px 0 #b8bcc8'">♫ Score</button>
+        <button id="readout-btn" onclick="setReadout(!readoutOn)" style="
+          flex:1; padding:7px 6px;
+          border:1.5px solid #c8ccd6; border-radius:8px;
+          background:linear-gradient(to bottom,#f7f8fa,#e0e3ea);
+          box-shadow:0 2px 0 #b8bcc8;
+          font-family:'Barlow Semi Condensed',sans-serif; font-size:0.85rem; font-weight:600; color:#555; cursor:pointer;
+          letter-spacing:0.03em; white-space:nowrap;
+          transition:box-shadow 0.1s,transform 0.1s,background 0.15s,color 0.15s;
+        " onmousedown="this.style.transform='translateY(2px)';this.style.boxShadow='0 0px 0 #b8bcc8'"
+           onmouseup="this.style.transform='';this.style.boxShadow='0 2px 0 #b8bcc8'"
+           ontouchstart="this.style.transform='translateY(2px)';this.style.boxShadow='0 0px 0 #b8bcc8'"
+           ontouchend="this.style.transform='';this.style.boxShadow='0 2px 0 #b8bcc8'">🗣 タツン</button>
         </div>
       </div>
 
@@ -2156,6 +2169,7 @@ let groove = 'normal';
 let allAccent = false;
 let showPick   = false;
 let showScore = false;
+let readoutOn = false; // リズム読み上げ（タ・ア・ン・ツ）ON/OFF
 
 // ===== VOICE COUNT BUFFERS =====
 const voiceBuffers = {};
@@ -2294,6 +2308,8 @@ function loadMetroSetlist() {
     if (s.categoryKey && RHYTHM_CATEGORIES && RHYTHM_CATEGORIES[s.categoryKey]) {
       _currentCategoryKey = s.categoryKey;
       currentCategoryAbcStrings = RHYTHM_CATEGORIES[s.categoryKey].map(p => p.abc || '');
+      const catSel = document.getElementById('rhythm-category-select');
+      if (catSel) catSel.value = s.categoryKey;
     }
   } catch(e) {}
 }
@@ -2754,6 +2770,13 @@ function setShowPick(val) {
   if (cont) cont.classList.toggle('show-pick', showPick);
   autoSaveMetroSlot();
   if (showScore) renderScoreView();
+}
+
+function setReadout(val) {
+  readoutOn = !!val;
+  localStorage.setItem('tsg-rhythm-readout', readoutOn ? '1' : '0');
+  const btn = document.getElementById('readout-btn');
+  if (btn) btn.classList.toggle('readout-active', readoutOn);
 }
 
 function setShowScore(val) {
@@ -3240,6 +3263,106 @@ function scheduleSubNote(time, beatIdx = 0) {
   }
 }
 
+// ===== 正解タイミング表（読み上げ・タップ採点の共通基盤） =====
+// パターン（ABC記法を正とする）から全スロットの種別を返す。
+// slot index は常に「全体subs基準」: beat*(1+subs) が表拍、+1+subIdx がサブ。
+// 種別: 'hit'=タ(アタック) / 'sustain'=ア(伸ばし中) / 'rest'=ン(休符) / 'brush'=ツ(ブラッシング)
+// 読み上げ・タップ採点・表示系はすべてこの表を参照すること（ロジックを複製しない）。
+let _ttKey = '';
+let _ttTypes = null;
+
+function getTimingTable() {
+  const abc = currentCategoryAbcStrings[metroSelectedSlot] || '';
+  const key = [abc, groove, beats, is8thBase,
+               JSON.stringify(beatMuted), JSON.stringify(subMuted)].join('§');
+  if (key === _ttKey) return _ttTypes;
+  _ttKey = key;
+  const spb = 1 + getSubsPerBeat();
+  const total = beats * spb;
+  let types = null;
+  if (abc) {
+    const unitsPerBeat = is8thBase ? 1 : 2; // L:1/8 → 4/4は1拍=2単位、6/8・7/8は1拍=1単位
+    types = parseAbcToSlotTypes(abc, total, spb / unitsPerBeat);
+  }
+  _ttTypes = types || slotTypesFromMutes(spb);
+  return _ttTypes;
+}
+
+// ABC文字列（c=音符 / z=休符 / x=ブラッシング、数字=単位長、/=半分）→ スロット種別の配列
+function parseAbcToSlotTypes(abc, totalSlots, slotsPerUnit) {
+  const s = abc.replace(/\|/g, '').replace(/\s+/g, '');
+  const re = /([czx])([0-9]*)(?:\/([0-9]*))?/g;
+  const types = [];
+  let m;
+  while ((m = re.exec(s)) !== null && types.length < totalSlots) {
+    const units = m[2] ? parseInt(m[2], 10) : 1;
+    const denom = m[3] !== undefined ? (m[3] ? parseInt(m[3], 10) : 2) : 1;
+    const slots = Math.max(1, Math.round(units * slotsPerUnit / denom));
+    for (let k = 0; k < slots && types.length < totalSlots; k++) {
+      if (m[1] === 'z')      types.push('rest');
+      else if (m[1] === 'x') types.push(k === 0 ? 'brush' : 'rest');
+      else                   types.push(k === 0 ? 'hit' : 'sustain');
+    }
+  }
+  // スロット数が合わない＝解析失敗 → null（ミュート配列からの生成にフォールバック）
+  return types.length === totalSlots ? types : null;
+}
+
+// ABCが無い場合のフォールバック（伸ばしは判別できないため hit/rest のみ）
+function slotTypesFromMutes(spb) {
+  const types = [];
+  for (let b = 0; b < beats; b++) {
+    types.push(beatMuted[b] ? 'rest' : 'hit');
+    const sm = subMuted[b] || [];
+    for (let s = 0; s < spb - 1; s++) types.push(sm[s] ? 'rest' : 'hit');
+  }
+  return types;
+}
+
+// 拍内サブ音のオフセット係数（interval倍率）。音・フラッシュ・読み上げすべてこれを使う
+function getSubOffsets() {
+  if (is8thBase) {
+    if (groove === 'sixteenth')         return [0.5];
+    if (groove === 'sixteenth-shuffle') return [shuffleRatio];
+    return [];
+  }
+  if (groove === 'eighth')            return [0.5];
+  if (groove === 'shuffle')           return [shuffleRatio];
+  if (groove === 'sixteenth')         return [0.25, 0.5, 0.75];
+  if (groove === 'sixteenth-shuffle') return [0.5 * shuffleRatio, 0.5, 0.5 + 0.5 * shuffleRatio];
+  return [];
+}
+
+// 読み上げ音の再生。現在は仮音源（種別ごとに音色を変えたトーン）。
+// 録音サンプル（タ/ター/ア/ン/ツ）導入時はこの関数の中身だけ差し替える。
+function scheduleReadoutVoice(time, type) {
+  const ctx = getAudioCtx();
+  const out = masterOut;
+  if (type === 'brush') {
+    const noise = makeNoise(ctx, 0.05);
+    const bp = ctx.createBiquadFilter();
+    bp.type = 'bandpass'; bp.frequency.value = 2500; bp.Q.value = 1;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.35, time);
+    g.gain.exponentialRampToValueAtTime(0.001, time + 0.05);
+    noise.connect(bp); bp.connect(g); g.connect(out);
+    noise.start(time); noise.stop(time + 0.05);
+    return;
+  }
+  // クリック音（700〜1200Hz）と聞き分けられるよう低めの音域を使う
+  const freq = type === 'hit' ? 440 : type === 'sustain' ? 330 : 185;
+  const vol  = type === 'hit' ? 0.5 : type === 'sustain' ? 0.3 : 0.32;
+  const dur  = type === 'hit' ? 0.1 : 0.08;
+  const osc = ctx.createOscillator();
+  const g = ctx.createGain();
+  osc.type = 'sine';
+  osc.frequency.value = freq;
+  g.gain.setValueAtTime(vol, time);
+  g.gain.exponentialRampToValueAtTime(0.001, time + dur);
+  osc.connect(g); g.connect(out);
+  osc.start(time); osc.stop(time + dur + 0.02);
+}
+
 function scheduler() {
   const ctx = getAudioCtx();
   const interval = 60 / bpm;
@@ -3248,52 +3371,32 @@ function scheduler() {
     const t = nextNoteTime;
     const isAccent = beat === 0;
 
+    // 拍内サブ音のオフセット係数（音・フラッシュ・読み上げ共通）
+    const subOffs = getSubOffsets();
+
     // メインビートを鳴らすか
     if (!beatMuted[beat]) scheduleNote(t, isAccent, beat);
 
     // 細分割音（サブミュートチェック付き）
     const sm = subMuted[beat] || [];
-    if (is8thBase) {
-      // 6/8・7/8: 各拍（8分音符）の中間に16分音符サブ 1つ
-      if (groove === 'sixteenth') {
-        if (!sm[0]) scheduleSubNote(t + interval / 2, beat);
-      } else if (groove === 'sixteenth-shuffle') {
-        if (!sm[0]) scheduleSubNote(t + interval * shuffleRatio, beat);
+    subOffs.forEach((f, sj) => {
+      if (!sm[sj]) scheduleSubNote(t + interval * f, beat);
+    });
+
+    // リズム読み上げ: 正解タイミング表に従い、休符(ン)も含め全スロットを発音する
+    if (readoutOn) {
+      const table = getTimingTable();
+      const base = beat * (1 + subOffs.length); // slot index は常に全体subs基準
+      if (table && table[base] !== undefined) {
+        scheduleReadoutVoice(t, table[base]);
+        subOffs.forEach((f, sj) => scheduleReadoutVoice(t + interval * f, table[base + 1 + sj]));
       }
-    } else if (groove === 'eighth') {
-      if (!sm[0]) scheduleSubNote(t + interval / 2, beat);
-    } else if (groove === 'shuffle') {
-      if (!sm[0]) scheduleSubNote(t + interval * shuffleRatio, beat);
-    } else if (groove === 'sixteenth') {
-      if (!sm[0]) scheduleSubNote(t + interval / 4, beat);
-      if (!sm[1]) scheduleSubNote(t + interval / 2, beat);
-      if (!sm[2]) scheduleSubNote(t + interval * 3 / 4, beat);
-    } else if (groove === 'sixteenth-shuffle') {
-      if (!sm[0]) scheduleSubNote(t + interval / 2 * shuffleRatio, beat);
-      if (!sm[1]) scheduleSubNote(t + interval / 2, beat);
-      if (!sm[2]) scheduleSubNote(t + interval / 2 + interval / 2 * shuffleRatio, beat);
     }
 
     const delay = (t - ctx.currentTime) * 1000;
     // サブドットフラッシュのスケジュール
-    const subFlashDelays = [];
-    if (is8thBase) {
-      if (groove === 'sixteenth') {
-        subFlashDelays.push([0, interval / 2]);
-      } else if (groove === 'sixteenth-shuffle') {
-        subFlashDelays.push([0, interval * shuffleRatio]);
-      }
-    } else if (groove === 'eighth') {
-      subFlashDelays.push([0, interval / 2]);
-    } else if (groove === 'shuffle') {
-      subFlashDelays.push([0, interval * shuffleRatio]);
-    } else if (groove === 'sixteenth') {
-      subFlashDelays.push([0, interval / 4], [1, interval / 2], [2, interval * 3 / 4]);
-    } else if (groove === 'sixteenth-shuffle') {
-      subFlashDelays.push([0, interval / 2 * shuffleRatio], [1, interval / 2], [2, interval / 2 + interval / 2 * shuffleRatio]);
-    }
-    subFlashDelays.forEach(([sj, dt]) => {
-      const sd = (t + dt - ctx.currentTime) * 1000;
+    subOffs.forEach((f, sj) => {
+      const sd = (t + interval * f - ctx.currentTime) * 1000;
       setTimeout(() => flashSubDot(beat, sj), Math.max(0, sd));
     });
     setTimeout(() => flashBeat(beat), Math.max(0, delay));
@@ -4457,11 +4560,18 @@ initMetroSetlist();
 initHints();
 initCapoBtns();
 renderStringButtons();
-document.getElementById('ref-pitch-value').textContent = refA4 + ' Hz';
+// チューナーUIは分岐時に削除済み（孤立コード）のためnullガード。ガードなしだとここでTypeErrorになり以降の初期化が全部止まる
+const _refPitchEl = document.getElementById('ref-pitch-value');
+if (_refPitchEl) _refPitchEl.textContent = refA4 + ' Hz';
 
 // スコアビューの状態を復元
 if (localStorage.getItem('tsg-rhythm-showScore') === '1') {
   setShowScore(true);
+}
+
+// 読み上げ（タツン）の状態を復元
+if (localStorage.getItem('tsg-rhythm-readout') === '1') {
+  setReadout(true);
 }
 
 // ===== キーボードショートカット =====
