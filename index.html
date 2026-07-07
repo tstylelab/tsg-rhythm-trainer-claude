@@ -2278,6 +2278,11 @@
             style="width:100%; padding:9px 12px; border:1.5px solid #dde0e8; border-radius:7px;
                    font-size:0.88rem; color:#222; background:#f7f8fa; outline:none; cursor:pointer;">
             <option value="">— カテゴリを選択 —</option>
+            <option value="stage1">ステージ1 4分音符と休符</option>
+            <option value="stage2">ステージ2 8分音符</option>
+            <option value="stage3">ステージ3 8分休符と裏拍</option>
+            <option value="stage4">ステージ4 のばす音符</option>
+            <option value="stage5">ステージ5 16分音符 入門</option>
             <option value="8th-basic">8分音符 基本</option>
             <option value="8th-advanced">8分音符 応用（準備中）</option>
             <option value="16th-basic">16分音符 基本</option>
@@ -4098,12 +4103,53 @@ function isSlotCleared(i) {
   return !!(key && clearedMap[key]);
 }
 
+// クリア効果音（clear=スロットクリア / stageclear=ステージ全クリア）
+const effectBuffers = {};
+let effectsLoaded = false;
+function loadEffectBuffers() {
+  if (effectsLoaded) return;
+  effectsLoaded = true;
+  const ctx = getAudioCtx();
+  ['clear', 'stageclear'].forEach(name => {
+    fetch('sounds/effects/' + name + '.mp3')
+      .then(r => r.arrayBuffer())
+      .then(ab => ctx.decodeAudioData(ab))
+      .then(buf => { effectBuffers[name] = buf; })
+      .catch(e => console.warn('effect load failed:', name, e));
+  });
+}
+function playEffect(name) {
+  const buf = effectBuffers[name];
+  if (!buf) return;
+  const ctx = getAudioCtx();
+  const src = ctx.createBufferSource();
+  src.buffer = buf;
+  const g = ctx.createGain();
+  g.gain.value = 0.9;
+  src.connect(g); g.connect(masterOut);
+  src.start();
+}
+
+// 現在のカテゴリ（ステージ）の全パターンがクリア済みか
+function isStageAllCleared() {
+  const cat = RHYTHM_CATEGORIES[_currentCategoryKey];
+  if (!cat || cat.length === 0) return false;
+  return cat.every(p => clearedMap[_currentCategoryKey + '/' + p.name]);
+}
+
 function markSlotCleared(i) {
   const key = slotClearKey(i);
   if (!key) return;
   clearedMap[key] = { bpm: bpm, date: new Date().toISOString().slice(0, 10) };
   lsSet(CLEARS_LS_KEY, JSON.stringify(clearedMap));
   renderMetroSlots();
+  playEffect('clear');
+  if (isStageAllCleared()) {
+    setTimeout(() => {
+      playEffect('stageclear');
+      showToast('🏆 ステージ全クリア！おめでとうございます！');
+    }, 1200);
+  }
 }
 
 // ===== タイミング補正（キャリブレーション） =====
@@ -4204,7 +4250,7 @@ function setTapMode(val) {
   if (!tapModeOn && calibOn) endCalibration(false);
   if (!tapModeOn && metronomeRunning) toggleMetronome();
   resetTapSession();
-  if (tapModeOn) updateCalibInfo();
+  if (tapModeOn) { updateCalibInfo(); loadEffectBuffers(); }
 }
 
 function resetTapSession() {
@@ -5237,6 +5283,134 @@ const RHYTHM_CATEGORIES = {
       abc:'c2c2c2c2 | c c c c c c c c | c2cc c2cc | c2c2c2c2' },
   ],
 };
+
+// ===== ステージ用パターン生成 =====
+// 発音列（タ=アタック / ア=のばし / ン=休符 / ツ=ブラッシング、|=小節区切り）だけを
+// 唯一のソースとして、abc・beatMuted・subMuted を自動生成する（データの二重管理を防ぐ）
+function mkP(name, bpm, yomi, groove) {
+  groove = groove || 'eighth';
+  const spb = groove === 'sixteenth' ? 4 : 2; // 1拍あたりのスロット数
+  const perMeasure = spb * 4;
+  const measures = yomi.split('|').map(m => m.replace(/\s+/g, ''));
+  const beats = measures.length * 4;
+  const beatMuted = [], subMuted = [];
+  const abcMeasures = [];
+  measures.forEach(mstr => {
+    const slots = Array.from(mstr);
+    if (slots.length !== perMeasure) console.warn('mkP スロット数不一致:', name, mstr);
+    for (let b = 0; b < 4; b++) {
+      const head = slots[b * spb];
+      beatMuted.push(!(head === 'タ' || head === 'ツ'));
+      const sm = [];
+      for (let s = 1; s < spb; s++) {
+        const c = slots[b * spb + s];
+        sm.push(!(c === 'タ' || c === 'ツ'));
+      }
+      subMuted.push(sm);
+    }
+    let abc = '', u = 0;
+    const lenTok = (ch, n) => {
+      if (groove === 'sixteenth') {
+        if (n === 1) return ch + '/';
+        if (n % 2 === 0) return ch + (n / 2 === 1 ? '' : n / 2);
+        return ch + n + '/2';
+      }
+      return ch + (n === 1 ? '' : n);
+    };
+    while (u < slots.length) {
+      if (u > 0 && u % spb === 0) abc += ' ';
+      const c = slots[u];
+      if (c === 'タ' || c === 'ツ') {
+        let d = 1;
+        while (u + d < slots.length && slots[u + d] === 'ア') d++;
+        abc += lenTok(c === 'ツ' ? 'x' : 'c', d);
+        u += d;
+      } else if (c === 'ン') {
+        // 休符は拍をまたがない単位でまとめる（読みやすさのため）
+        let d = 1;
+        while (u + d < slots.length && slots[u + d] === 'ン' && (u + d) % spb !== 0) d++;
+        abc += lenTok('z', d);
+        u += d;
+      } else { console.warn('mkP 不正な文字:', name, c); u++; }
+    }
+    abcMeasures.push(abc);
+  });
+  return { name, bpm, beats, groove, beatMuted, subMuted, abc: abcMeasures.join(' | ') };
+}
+
+// ===== 初心者向けステージ（クリアを目指す練習コース） =====
+Object.assign(RHYTHM_CATEGORIES, {
+  'stage1': [
+    mkP('4分音符×4',       80, 'タアタアタアタア'),
+    mkP('4拍目が休み',      80, 'タアタアタアンン'),
+    mkP('1・3拍目だけ',     80, 'タアンンタアンン'),
+    mkP('2・4拍目だけ',     80, 'ンンタアンンタア'),
+    mkP('3拍目が休み',      80, 'タアタアンンタア'),
+    mkP('1拍目が休み',      80, 'ンンタアタアタア'),
+    mkP('まんなかが休み',    80, 'タアンンンンタア'),
+    mkP('前半だけ',         80, 'タアタアンンンン'),
+    mkP('後半だけ',         80, 'ンンンンタアタア'),
+    mkP('2拍目が休み',      80, 'タアンンタアタア'),
+    mkP('2分音符×2',       80, 'タアアアタアアア'),
+    mkP('2分音符と4分',     80, 'タアアアタアンン'),
+  ],
+  'stage2': [
+    mkP('8分音符×8',       72, 'タタタタタタタタ'),
+    mkP('4分＋8分8分',      72, 'タアタタタアタタ'),
+    mkP('8分8分＋4分',      72, 'タタタアタタタア'),
+    mkP('前半だけ8分',      72, 'タタタタタアタア'),
+    mkP('後半だけ8分',      72, 'タアタアタタタタ'),
+    mkP('1拍目だけ8分',     72, 'タタタアタアタア'),
+    mkP('4拍目だけ8分',     72, 'タアタアタアタタ'),
+    mkP('8分と休み',        72, 'タタタタンンタタ'),
+    mkP('8分→休み→8分',    72, 'タタンンタタンン'),
+    mkP('4分はさみ',        72, 'タタタアタアタタ'),
+    mkP('2小節チャレンジA', 72, 'タアタタタアタア|タタタタタアンン'),
+    mkP('2小節チャレンジB', 72, 'タタタアタアタタ|タアタタンンタア'),
+  ],
+  'stage3': [
+    mkP('タンタンタンタン', 68, 'タンタンタンタン'),
+    mkP('裏拍だけ',         68, 'ンタンタンタンタ'),
+    mkP('1拍目だけ裏',      68, 'ンタタアタアタア'),
+    mkP('4拍目だけ裏',      68, 'タアタアタアンタ'),
+    mkP('2・4拍目が裏',     68, 'タアンタタアンタ'),
+    mkP('1・3拍目が裏',     68, 'ンタタアンタタア'),
+    mkP('タンとタア',       68, 'タンタアタンタア'),
+    mkP('ンタとタタ',       68, 'ンタタタンタタタ'),
+    mkP('裏からつなぐ',     68, 'ンタタンンタタン'),
+    mkP('休みスタート',     68, 'ンンタタタンタア'),
+    mkP('2小節チャレンジA', 68, 'タンタンンタンタ|タアンタタンタア'),
+    mkP('2小節チャレンジB', 68, 'ンタタアタンタタ|タタンタタアンン'),
+  ],
+  'stage4': [
+    mkP('全音符',           66, 'タアアアアアアア'),
+    mkP('2分＋4分4分',      66, 'タアアアタアタア'),
+    mkP('4分4分＋2分',      66, 'タアタアタアアア'),
+    mkP('付点2分＋4分',     66, 'タアアアアアタア'),
+    mkP('付点4分＋8分',     66, 'タアアタタアアタ'),
+    mkP('8分＋付点4分',     66, 'タタアアタタアア'),
+    mkP('シンコペーションA', 66, 'タタアタタアタア'),
+    mkP('シンコペーションB', 66, 'タタアアアタタア'),
+    mkP('のばして休む',      66, 'タアアアアアンン'),
+    mkP('付点4分＋8分＋休み', 66, 'タアアタンンタア'),
+    mkP('2小節チャレンジA',  66, 'タアアアアアタア|タアアタタアアア'),
+    mkP('2小節チャレンジB',  66, 'タタアタタアアア|タタアアタアンン'),
+  ],
+  'stage5': [
+    mkP('16分音符×16',      56, 'タタタタタタタタタタタタタタタタ', 'sixteenth'),
+    mkP('タアタタ',          56, 'タアタタタアタタタアタタタアタタ', 'sixteenth'),
+    mkP('タタタア',          56, 'タタタアタタタアタタタアタタタア', 'sixteenth'),
+    mkP('タタアタ',          56, 'タタアタタタアタタタアタタタアタ', 'sixteenth'),
+    mkP('付点8分＋16分',     56, 'タアアタタアアタタアアタタアアタ', 'sixteenth'),
+    mkP('4分と16分',         56, 'タアアアタタタタタアアアタタタタ', 'sixteenth'),
+    mkP('8分と16分',         56, 'タアタアタタタタタアタアタタタタ', 'sixteenth'),
+    mkP('16分休みスタート',  56, 'ンタタタタアアアンタタタタアアア', 'sixteenth'),
+    mkP('最後が休み',        56, 'タタタンタタタンタタタンタタタン', 'sixteenth'),
+    mkP('タンタタ',          56, 'タンタタタンタタタンタタタンタタ', 'sixteenth'),
+    mkP('総合チャレンジA',   56, 'タアタタタタタアタアアタタタタア', 'sixteenth'),
+    mkP('総合チャレンジB',   56, 'タタタアタアアタンタタタタアアア', 'sixteenth'),
+  ],
+});
 
 function loadRhythmCategory(categoryKey) {
   if (!categoryKey) return;
