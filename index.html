@@ -2033,6 +2033,26 @@
 </div>
 
 
+<div class="modal-overlay" id="share-modal" onclick="if(event.target===this)closeShareModal()">
+  <div class="modal-box" style="max-width:360px; text-align:center;">
+    <button class="modal-close" onclick="closeShareModal()">×</button>
+    <div class="modal-title" style="justify-content:center;">🔗 練習メニューを共有</div>
+    <p style="font-size:0.82rem; color:#555; margin-bottom:16px;">このURLを送ると、同じ練習メニューをすぐ開けます</p>
+    <div id="share-qr-wrap" style="margin:0 auto 16px; width:160px; height:160px;
+         display:flex; align-items:center; justify-content:center;"></div>
+    <div style="display:flex; gap:6px; align-items:center; margin-bottom:8px;">
+      <input type="text" id="share-url-input" readonly
+        style="flex:1; padding:8px 10px; border:1.5px solid #dde0e8; border-radius:7px;
+               font-size:0.72rem; color:#555; background:#f7f8fa; outline:none;
+               overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
+      <button onclick="copyShareUrl()"
+        style="padding:8px 12px; background:#1a1a2e; color:#fff; border:none; border-radius:7px;
+               font-size:0.8rem; cursor:pointer; white-space:nowrap; flex-shrink:0;">📋 コピー</button>
+    </div>
+    <p id="share-copied-msg" style="font-size:0.78rem; color:#27ae60; margin:0; display:none;">✅ コピーしました！</p>
+  </div>
+</div>
+
 <main>
 
   <!-- ===== METRONOME PANEL ===== -->
@@ -2223,6 +2243,12 @@
             <button onclick="clearSelectedMetroSlot()" style="flex-shrink:0;margin-left:8px;padding:3px 10px;font-size:0.72rem;color:#c0392b;background:#fff5f5;border:1px solid #e0a0a0;border-radius:4px;cursor:pointer;white-space:nowrap;font-weight:600;" title="選択中のスロットを初期状態に戻す">選択中スロットをリセット</button>
           </div>
         </div>
+        <button onclick="openShareModal()" style="width:100%; margin-top:8px; padding:11px;
+          border:1.5px solid #b0c0d8; border-radius:8px; background:#f0f4fa; color:#2176ae;
+          font-size:0.88rem; font-weight:700; cursor:pointer;"
+          onmouseover="this.style.background='#dce8f8'"
+          onmouseout="this.style.background='#f0f4fa'">🔗 URLで共有</button>
+
         <!-- カテゴリ読み込み -->
         <div style="margin-top:14px; border-top:1.5px solid #eee; padding-top:14px;">
           <div class="live-slots-label" style="margin-top:0; margin-bottom:10px;">カテゴリから読み込む</div>
@@ -2516,12 +2542,16 @@ function makeMetroSlotBtn(i) {
     + `<span class="metro-slot-num">${i+1}</span>`
     + `<span class="metro-slot-bpm" id="mslot-bpm-${i}">${bpmDisplay}</span>`
     + `</div>`
-    + `<div class="metro-slot-name" id="mslot-name-${i}">${name}</div>`
+    + `<div class="metro-slot-name" id="mslot-name-${i}"></div>`
     + `<button class="metro-slot-dup-btn" title="複製" onclick="event.stopPropagation();duplicateMetroSlot(${i})">`
     + `<svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.3">`
     + `<rect x="3.5" y="3.5" width="5.5" height="5.5" rx="1"/>`
     + `<path d="M6.5 3.5V1.5a.5.5 0 0 0-.5-.5h-4a.5.5 0 0 0-.5.5v4a.5.5 0 0 0 .5.5H3.5"/>`
     + `</svg></button>`;
+  // 曲名はHTMLとして解釈させずtextContentで入れる
+  // （共有URL・JSONファイル由来の曲名にタグが含まれていた場合のスクリプト注入防止）
+  const nameDiv = btn.querySelector('.metro-slot-name');
+  if (nameDiv) nameDiv.textContent = name;
   return btn;
 }
 
@@ -2809,16 +2839,167 @@ function loadMetroSetlistFile(event) {
   event.target.value = '';
 }
 
+// ===== URL共有（Metronome Tunerから移植・カテゴリ対応） =====
+function showToast(msg) {
+  const t = document.createElement('div');
+  t.textContent = msg;
+  t.style.cssText = 'position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#1a1a2e;color:#fff;padding:10px 22px;border-radius:8px;font-size:0.85rem;z-index:2000;box-shadow:0 4px 12px rgba(0,0,0,0.25);white-space:nowrap;pointer-events:none;';
+  document.body.appendChild(t);
+  setTimeout(() => {
+    t.style.transition = 'opacity 0.5s';
+    t.style.opacity = '0';
+    setTimeout(() => t.remove(), 500);
+  }, 2500);
+}
+
+function encodeSetlistForUrl() {
+  const data = { v: 1, c: metroSlotCount, s: [] };
+  if (_currentCategoryKey) data.k = _currentCategoryKey; // リズム譜（ABC）の紐付け元カテゴリ
+  for (let i = 0; i < metroSlotCount; i++) {
+    if (metroSlots[i] === null && !metroNames[i]) continue;
+    const slot = { i };
+    if (metroSlots[i] !== null) slot.b = metroSlots[i];
+    if (metroNames[i]) slot.n = metroNames[i];
+    if (metroBeatsArr[i] !== 4) slot.bt = metroBeatsArr[i];
+    if (metroIs8thBaseArr[i]) slot['8'] = 1;
+    if (metroGroovesArr[i] && metroGroovesArr[i] !== 'normal') slot.g = metroGroovesArr[i];
+    if (metroSoundsArr[i] && metroSoundsArr[i] !== 'beep') slot.sn = metroSoundsArr[i];
+    if (metroAllAccentArr[i]) slot.aa = 1;
+    if (metroShowPickArr[i]) slot.sp = 1;
+    if ((metroShuffleArr[i] || 67) !== 67) slot.sr = metroShuffleArr[i];
+    const bm = metroBeatMutedArr[i];
+    if (Array.isArray(bm) && bm.some(v => v)) slot.bm = bm;
+    const sm = metroSubMutedArr[i];
+    if (Array.isArray(sm) && sm.some(arr => Array.isArray(arr) && arr.some(v => v))) slot.sm = sm;
+    data.s.push(slot);
+  }
+  const json = JSON.stringify(data);
+  const bytes = new TextEncoder().encode(json);
+  let _bStr = ''; bytes.forEach(b => { _bStr += String.fromCharCode(b); });
+  const b64 = btoa(_bStr).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  return location.origin + location.pathname + '#s=' + b64;
+}
+
+function decodeSetlistFromHash() {
+  const hash = location.hash;
+  if (!hash.startsWith('#s=')) return false;
+  try {
+    const b64 = hash.slice(3).replace(/-/g, '+').replace(/_/g, '/');
+    const bytes = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+    const data = JSON.parse(new TextDecoder().decode(bytes));
+    if (!data || data.v !== 1) return false;
+
+    metroSlots         = Array(48).fill(null);
+    metroNames         = Array(48).fill('');
+    metroBeatsArr      = Array(48).fill(4);
+    metroGroovesArr    = Array(48).fill('normal');
+    metroIs8thBaseArr  = Array(48).fill(false);
+    metroSoundsArr     = Array(48).fill('beep');
+    metroShuffleArr    = Array(48).fill(67);
+    metroBeatMutedArr  = Array(48).fill(null).map(() => []);
+    metroSubMutedArr   = Array(48).fill(null).map(() => []);
+    metroAllAccentArr  = Array(48).fill(false);
+    metroShowPickArr   = Array(48).fill(false);
+    metroSlotCount     = [12,24,36,48].includes(data.c) ? data.c : 12;
+    metroSelectedSlot  = 0;
+
+    (data.s || []).forEach(slot => {
+      const idx = slot.i;
+      if (typeof idx !== 'number' || idx < 0 || idx >= 48) return;
+      // 各値は種類・範囲を検証してから採用（壊れた・改変された共有URL対策）
+      if (slot.b !== undefined) { const bv = Number(slot.b); if (Number.isFinite(bv) && bv >= 30 && bv <= 240) metroSlots[idx] = bv; }
+      metroNames[idx]        = (typeof slot.n === 'string' ? slot.n : '').slice(0, 40);
+      const btv = Number(slot.bt);
+      metroBeatsArr[idx]     = (Number.isFinite(btv) && btv >= 1 && btv <= 16) ? Math.round(btv) : 4;
+      metroIs8thBaseArr[idx] = !!slot['8'];
+      metroGroovesArr[idx]   = ['normal','eighth','sixteenth','shuffle','sixteenth-shuffle'].includes(slot.g) ? slot.g : 'normal';
+      metroSoundsArr[idx]    = ['beep','wood','hihat','voice'].includes(slot.sn) ? slot.sn : 'beep';
+      metroAllAccentArr[idx] = !!slot.aa;
+      metroShowPickArr[idx]  = !!slot.sp;
+      const srv = Number(slot.sr);
+      metroShuffleArr[idx]   = (Number.isFinite(srv) && srv >= 51 && srv <= 80) ? Math.round(srv) : 67;
+      if (Array.isArray(slot.bm)) metroBeatMutedArr[idx] = slot.bm.slice(0, 16).map(v => !!v);
+      if (Array.isArray(slot.sm)) metroSubMutedArr[idx]  = slot.sm.slice(0, 16).map(r => Array.isArray(r) ? r.slice(0, 3).map(v => !!v) : []);
+    });
+
+    // カテゴリ（リズム譜の紐付け）を復元
+    if (data.k && RHYTHM_CATEGORIES[data.k]) {
+      _currentCategoryKey = data.k;
+      currentCategoryAbcStrings = RHYTHM_CATEGORIES[data.k].map(p => p.abc || '');
+      const catSel = document.getElementById('rhythm-category-select');
+      if (catSel) catSel.value = data.k;
+    } else {
+      _currentCategoryKey = '';
+      currentCategoryAbcStrings = [];
+    }
+
+    saveMetroSetlist();
+    history.replaceState(null, '', location.pathname + location.search);
+    setTimeout(() => showToast('🔗 共有URLから練習メニューを読み込みました'), 600);
+    return true;
+  } catch(e) {
+    console.error('Share URL decode error:', e);
+    return false;
+  }
+}
+
+let _shareQrInst = null;
+function openShareModal() {
+  const url = encodeSetlistForUrl();
+  document.getElementById('share-url-input').value = url;
+  document.getElementById('share-copied-msg').style.display = 'none';
+  const qrWrap = document.getElementById('share-qr-wrap');
+  qrWrap.innerHTML = '';
+  if (typeof QRCode !== 'undefined') {
+    try {
+      _shareQrInst = new QRCode(qrWrap, {
+        text: url, width: 160, height: 160,
+        colorDark: '#1a1a2e', colorLight: '#ffffff',
+        correctLevel: QRCode.CorrectLevel.M
+      });
+    } catch (err) {
+      // URLがQRコードの容量上限を超えると例外になる（曲数・曲名が多い場合）。
+      // 握りつぶさないとモーダル自体が開かず「共有ボタンが無反応」に見えてしまう
+      qrWrap.innerHTML = '';
+      qrWrap.style.cssText += 'font-size:0.78rem;color:#999;line-height:1.6;text-align:center;padding:0 6px;';
+      qrWrap.textContent = '曲数が多いためQRコードを表示できません。下のURLコピーをご利用ください。';
+    }
+  } else {
+    qrWrap.style.cssText += 'font-size:0.8rem;color:#999;';
+    qrWrap.textContent = 'QRコードを読み込み中...';
+  }
+  document.getElementById('share-modal').classList.add('open');
+}
+
+function closeShareModal() {
+  document.getElementById('share-modal').classList.remove('open');
+}
+
+function copyShareUrl() {
+  const url = document.getElementById('share-url-input').value;
+  const showCopied = () => {
+    const msg = document.getElementById('share-copied-msg');
+    msg.style.display = 'block';
+    setTimeout(() => { msg.style.display = 'none'; }, 2000);
+  };
+  if (navigator.clipboard) {
+    navigator.clipboard.writeText(url).then(showCopied).catch(() => {
+      document.getElementById('share-url-input').select();
+      document.execCommand('copy');
+      showCopied();
+    });
+  } else {
+    document.getElementById('share-url-input').select();
+    document.execCommand('copy');
+    showCopied();
+  }
+}
+
 function initMetroSetlist() {
   loadMetroSetlist();
+  decodeSetlistFromHash();
   renderMetroSlots();
-  if (metroSlotCount === 24) {
-    const cont = document.getElementById('metro-slots');
-    if (cont && cont.children.length === 12) {
-      for (let i = 12; i < 24; i++) cont.appendChild(makeMetroSlotBtn(i));
-    }
-    updateMetroExpandBtn();
-  }
+  updateMetroExpandBtn();
   if (metroSlots[metroSelectedSlot] !== null) {
     applyMetroSlot(metroSelectedSlot);
   }
@@ -5344,6 +5525,7 @@ if (lastTab && ['metronome','tuner','live'].includes(lastTab)) {
 }
 </script>
 <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/abcjs@6.4.4/dist/abcjs-basic-min.js" onload="if(typeof currentCategoryAbcStrings!=='undefined'&&currentCategoryAbcStrings.length>0)renderAbcScore(metroSelectedSlot);"></script>
 </body>
 </html>
