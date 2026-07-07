@@ -2075,6 +2075,14 @@
         </div>
       </div>
 
+      <!-- 読み上げモード切替（タツンON時のみ表示） -->
+      <div class="beat-row" id="readout-mode-row" style="display:none; margin-top:6px;">
+        <div style="display:flex;gap:6px;flex:1;">
+          <button class="groove-btn selected" id="readout-mode-kizami"  onclick="setReadoutMode('kizami')">刻み（タアアア）</button>
+          <button class="groove-btn"          id="readout-mode-nobashi" onclick="setReadoutMode('nobashi')">伸ばし（ターーー）</button>
+        </div>
+      </div>
+
 
       <!-- Metro Setlist (折りたたみ) -->
       <button class="setlist-toggle" id="metro-setlist-toggle" onclick="toggleMetroSetlist()">
@@ -2170,6 +2178,7 @@ let allAccent = false;
 let showPick   = false;
 let showScore = false;
 let readoutOn = false; // リズム読み上げ（タ・ア・ン・ツ）ON/OFF
+let readoutMode = 'kizami'; // 'kizami'=タアアア（細分ごとに発音） / 'nobashi'=ターーー（伸ばして発音）
 
 // ===== VOICE COUNT BUFFERS =====
 const voiceBuffers = {};
@@ -2777,7 +2786,18 @@ function setReadout(val) {
   localStorage.setItem('tsg-rhythm-readout', readoutOn ? '1' : '0');
   const btn = document.getElementById('readout-btn');
   if (btn) btn.classList.toggle('readout-active', readoutOn);
+  const modeRow = document.getElementById('readout-mode-row');
+  if (modeRow) modeRow.style.display = readoutOn ? '' : 'none';
   if (readoutOn && !readoutLoaded) loadReadoutBuffers(); // 再生開始前に先読み
+}
+
+function setReadoutMode(mode) {
+  readoutMode = (mode === 'nobashi') ? 'nobashi' : 'kizami';
+  localStorage.setItem('tsg-rhythm-readout-mode', readoutMode);
+  const bk = document.getElementById('readout-mode-kizami');
+  const bn = document.getElementById('readout-mode-nobashi');
+  if (bk) bk.classList.toggle('selected', readoutMode === 'kizami');
+  if (bn) bn.classList.toggle('selected', readoutMode === 'nobashi');
 }
 
 function setShowScore(val) {
@@ -3338,8 +3358,8 @@ function getSubOffsets() {
 const readoutBuffers = {};   // name -> { buffer, offset(立ち上がり位置 秒) }
 let readoutLoaded = false;
 const READOUT_FILES = ['ta', 'a', 'n', 'tsu', 'taa'];
-const READOUT_SAMPLE_MAP = { hit: 'ta', sustain: 'a', rest: 'n', brush: 'tsu' };
-const READOUT_GAIN = { hit: 1.0, sustain: 0.85, rest: 0.85, brush: 0.9 };
+const READOUT_SAMPLE_MAP = { hit: 'ta', hitLong: 'taa', sustain: 'a', rest: 'n', brush: 'tsu' };
+const READOUT_GAIN = { hit: 1.0, hitLong: 1.0, sustain: 0.85, rest: 0.85, brush: 0.9 };
 let _readoutPrev = null; // 直前に鳴らした {src, gain}（次の発音時に停止するため）
 
 // バッファ先頭の無音をスキップする再生開始位置を検出。
@@ -3364,6 +3384,20 @@ async function loadReadoutBuffers() {
       .then(buf => { readoutBuffers[name] = { buffer: buf, offset: detectReadoutOnset(buf) }; })
       .catch(e => console.warn('readout load failed:', name, e))
   ));
+}
+
+// 1スロット分の読み上げを予約。伸ばしモードでは sustain を発音せず、
+// 直前の hit を長い「ター」で鳴らして次の発音時まで持続させる（stop処理は次の音の予約時に入る）
+function scheduleReadoutSlot(time, table, idx) {
+  const type = table[idx];
+  if (readoutMode === 'nobashi') {
+    if (type === 'sustain') return; // 前のターが鳴り続けている区間
+    if (type === 'hit' && table[(idx + 1) % table.length] === 'sustain') {
+      scheduleReadoutVoice(time, 'hitLong');
+      return;
+    }
+  }
+  scheduleReadoutVoice(time, type);
 }
 
 // 読み上げ音の再生。サンプル読込済みなら録音音声、未読込なら仮音源にフォールバック
@@ -3402,9 +3436,10 @@ function scheduleReadoutVoice(time, type) {
     return;
   }
   // クリック音（700〜1200Hz）と聞き分けられるよう低めの音域を使う
-  const freq = type === 'hit' ? 440 : type === 'sustain' ? 330 : 185;
-  const vol  = type === 'hit' ? 0.5 : type === 'sustain' ? 0.3 : 0.32;
-  const dur  = type === 'hit' ? 0.1 : 0.08;
+  const isHit = (type === 'hit' || type === 'hitLong');
+  const freq = isHit ? 440 : type === 'sustain' ? 330 : 185;
+  const vol  = isHit ? 0.5 : type === 'sustain' ? 0.3 : 0.32;
+  const dur  = isHit ? 0.1 : 0.08;
   const osc = ctx.createOscillator();
   const g = ctx.createGain();
   osc.type = 'sine';
@@ -3440,8 +3475,8 @@ function scheduler() {
       const table = getTimingTable();
       const base = beat * (1 + subOffs.length); // slot index は常に全体subs基準
       if (table && table[base] !== undefined) {
-        scheduleReadoutVoice(t, table[base]);
-        subOffs.forEach((f, sj) => scheduleReadoutVoice(t + interval * f, table[base + 1 + sj]));
+        scheduleReadoutSlot(t, table, base);
+        subOffs.forEach((f, sj) => scheduleReadoutSlot(t + interval * f, table, base + 1 + sj));
       }
     }
 
@@ -4654,6 +4689,7 @@ if (localStorage.getItem('tsg-rhythm-showScore') === '1') {
 }
 
 // 読み上げ（タツン）の状態を復元
+setReadoutMode(localStorage.getItem('tsg-rhythm-readout-mode') || 'kizami');
 if (localStorage.getItem('tsg-rhythm-readout') === '1') {
   setReadout(true);
 }
