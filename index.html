@@ -2115,6 +2115,13 @@
                    border:1px solid #ccd0da; border-radius:6px; cursor:pointer;">⏱ タイミング補正</button>
           <span id="tap-calib-info" style="font-size:0.72rem; color:#999; margin-left:8px;"></span>
         </div>
+        <div style="margin-top:8px; font-size:0.7rem; color:#999;">
+          手動微調整：
+          <button onpointerdown="event.stopPropagation()" onclick="nudgeCalib(-0.02,event)"
+            style="padding:3px 10px; font-size:0.8rem; border:1px solid #ccd0da; border-radius:6px; background:#fff; cursor:pointer;" title="「遅い」と出がちなとき">− 早め</button>
+          <button onpointerdown="event.stopPropagation()" onclick="nudgeCalib(0.02,event)"
+            style="padding:3px 10px; font-size:0.8rem; border:1px solid #ccd0da; border-radius:6px; background:#fff; cursor:pointer; margin-left:4px;" title="「早い」と出がちなとき">遅め ＋</button>
+        </div>
       </div>
       <div id="beat-tap-hint" style="text-align:center; font-size:0.71rem; color:#c0c4cc;
            letter-spacing:0.04em; margin-top:5px; margin-bottom:2px;
@@ -4231,12 +4238,56 @@ let tapCalibOffset = (() => {
 })();
 let calibOn = false;
 let _calibTimer = null, _calibNext = 0, _calibClicks = [], _calibDeltas = [];
-const CALIB_TAPS = 10;      // 収集タップ数（最初の2回は捨てて中央値を取る）
+const CALIB_INTERVAL = 1.0;  // クリック間隔（秒）。1秒なら大遅延でも±0.5s内で必ずマッチできる
+const CALIB_TAPS = 8;        // 収集タップ数（最初の2回は捨てて中央値）
+const CALIB_MAX  = 0.7;      // 補正値の上限（秒）
 
 function effectiveTapOffset() {
   if (tapCalibOffset !== null && isFinite(tapCalibOffset)) return tapCalibOffset;
   const ctx = getAudioCtx();
   return ctx.outputLatency || ctx.baseLatency || 0;
+}
+
+function _median(arr) {
+  const a = arr.slice().sort((x, y) => x - y);
+  return a.length ? a[Math.floor(a.length / 2)] : null;
+}
+
+// 収集した差分から補正値を推定（位相折り返しで1クリックぶんのズレも吸収）
+function _calibEstimate() {
+  const raw = _calibDeltas.slice(2); // 最初の2回は捨てる（叩き始めは不安定）
+  if (raw.length < 2) return null;
+  const med0 = _median(raw);
+  const folded = raw.map(d => {
+    let x = d;
+    while (x - med0 >  CALIB_INTERVAL / 2) x -= CALIB_INTERVAL;
+    while (x - med0 < -CALIB_INTERVAL / 2) x += CALIB_INTERVAL;
+    return x;
+  });
+  return _median(folded);
+}
+
+// 補正用の鋭いクリック（currentSoundに依存せず必ず鳴る）
+function _calibClick(time) {
+  const ctx = getAudioCtx();
+  const osc = ctx.createOscillator();
+  const g = ctx.createGain();
+  osc.type = 'square';
+  osc.frequency.value = 1100;
+  g.gain.setValueAtTime(0.4, time);
+  g.gain.exponentialRampToValueAtTime(0.001, time + 0.05);
+  osc.connect(g); g.connect(masterOut);
+  osc.start(time); osc.stop(time + 0.06);
+}
+
+// 手動微調整（自動補正が完璧でない端末向けの逃げ道）
+function nudgeCalib(delta, e) {
+  if (e && e.stopPropagation) e.stopPropagation();
+  const base = (tapCalibOffset !== null && isFinite(tapCalibOffset)) ? tapCalibOffset : effectiveTapOffset();
+  const v = Math.max(-CALIB_MAX, Math.min(CALIB_MAX, base + delta));
+  tapCalibOffset = v;
+  lsSet('tsg-rhythm-tap-offset', String(v));
+  updateCalibInfo();
 }
 
 function updateCalibInfo() {
@@ -4260,35 +4311,39 @@ function startCalibration() {
   _calibDeltas = [];
   const ctx = getAudioCtx();
   if (ctx.state === 'suspended') ctx.resume();
-  _calibNext = ctx.currentTime + 0.5;
-  showTapVerdict('', '⏱', `クリックに合わせて${CALIB_TAPS}回タップしてください`);
+  _calibNext = ctx.currentTime + 0.6;
+  showTapVerdict('', '⏱', `クリック音に合わせて${CALIB_TAPS}回タップ`);
   const s = document.getElementById('tap-stats');
   if (s) s.textContent = `タイミング補正中… 0/${CALIB_TAPS}`;
   const b = document.getElementById('tap-calib-btn');
   if (b) b.textContent = '✕ 補正を中止';
-  // 4分音符クリック（BPM90固定）を専用ループで鳴らす
+  // ゆっくりした鋭いクリック（1秒間隔）を専用ループで鳴らす
   _calibTimer = setInterval(() => {
     const c = getAudioCtx();
-    while (_calibNext < c.currentTime + 0.15) {
-      scheduleNote(_calibNext, true, 0);
+    while (_calibNext < c.currentTime + 0.2) {
+      _calibClick(_calibNext);
       _calibClicks.push(_calibNext);
-      _calibNext += 60 / 90;
+      _calibNext += CALIB_INTERVAL;
     }
   }, 25);
 }
 
 function calibTapAt(tapTime) {
+  // 最も近いクリックとの差を取る。1秒間隔なので必ず±0.5s内でマッチ＝どのタップも必ず拾う
+  // （旧実装は±0.3sを超えると無視していたため、遅延の大きいAndroidで全く反応しなかった）
   let best = null, bestAbs = Infinity;
   for (const ct of _calibClicks) {
     const a = Math.abs(tapTime - ct);
     if (a < bestAbs) { bestAbs = a; best = ct; }
   }
-  if (best === null || bestAbs > 0.3) return; // クリックからかけ離れたタップは無視
+  if (best === null) return;
   _calibDeltas.push(tapTime - best);
   const n = _calibDeltas.length;
   const s = document.getElementById('tap-stats');
   if (s) s.textContent = `タイミング補正中… ${n}/${CALIB_TAPS}`;
-  showTapVerdict('v-good', '・'.repeat(Math.min(n, CALIB_TAPS)), undefined);
+  const est = _calibEstimate();
+  showTapVerdict('v-good', '・'.repeat(Math.min(n, CALIB_TAPS)),
+    est !== null ? `推定ズレ ${Math.round(est * 1000)}ms` : 'そのまま続けて…');
   if (n >= CALIB_TAPS) endCalibration(true);
 }
 
@@ -4297,12 +4352,12 @@ function endCalibration(save) {
   if (_calibTimer) { clearInterval(_calibTimer); _calibTimer = null; }
   const b = document.getElementById('tap-calib-btn');
   if (b) b.textContent = '⏱ タイミング補正';
-  if (save && _calibDeltas.length > 2) {
-    const d = _calibDeltas.slice(2).sort((a, b2) => a - b2); // 最初の2回は捨てる
-    const med = d[Math.floor(d.length / 2)];
-    tapCalibOffset = med;
-    lsSet('tsg-rhythm-tap-offset', String(med));
-    showTapVerdict('v-perfect', '✓', `端末補正 ${Math.round(med * 1000)}ms を保存しました。もう一度タップで練習開始！`);
+  const est = _calibEstimate();
+  if (save && est !== null) {
+    const off = Math.max(-CALIB_MAX, Math.min(CALIB_MAX, est));
+    tapCalibOffset = off;
+    lsSet('tsg-rhythm-tap-offset', String(off));
+    showTapVerdict('v-perfect', '✓', `補正 ${Math.round(off * 1000)}ms を保存。タップで練習開始！`);
     const s = document.getElementById('tap-stats');
     if (s) s.textContent = '';
   } else {
@@ -4376,7 +4431,7 @@ function judgeTap(tapTime) {
     const a = Math.abs(tapTime - tg.time);
     if (a < bestAbs) { bestAbs = a; best = tg; }
   }
-  if (!best || bestAbs > 0.15) {
+  if (!best || bestAbs > 0.2) {
     tapExtra++;
     _tapCombo = 0;
     showTapVerdict('v-miss', '×', '余分なタップ');
@@ -4384,11 +4439,11 @@ function judgeTap(tapTime) {
   }
   best.judged = true;
   const d = tapTime - best.time;
-  if (bestAbs <= 0.06) {
+  if (bestAbs <= 0.07) {
     best.verdict = 'tap-perfect';
     _tapCombo++;
     showTapVerdict('v-perfect', '◎', _tapCombo >= 3 ? `ジャスト！ 🔥${_tapCombo}連続` : 'ジャスト！');
-  } else if (bestAbs <= 0.12) {
+  } else if (bestAbs <= 0.13) {
     best.verdict = 'tap-good';
     _tapCombo = 0;
     showTapVerdict('v-good', '○', d < 0 ? '少し早い' : '少し遅い');
@@ -4404,7 +4459,7 @@ function judgeTap(tapTime) {
 function tapSweep() {
   const now = getAudioCtx().currentTime;
   tapTargets.forEach(tg => {
-    if (!tg.judged && now > tg.time + 0.15) {
+    if (!tg.judged && now > tg.time + 0.2) {
       tg.judged = true;
       tg.verdict = 'tap-miss';
       colorTapNote(tg.idx, 'tap-miss');
