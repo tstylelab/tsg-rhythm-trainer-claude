@@ -4206,7 +4206,8 @@ function playEffect(name) {
   const src = ctx.createBufferSource();
   src.buffer = buf;
   const g = ctx.createGain();
-  g.gain.value = 0.9;
+  // クリア音は控えめ(60%)、ステージ全クリアは大きめのまま
+  g.gain.value = (name === 'stageclear') ? 0.9 : 0.54;
   src.connect(g); g.connect(masterOut);
   src.start();
 }
@@ -4610,8 +4611,10 @@ function scheduler() {
       subOffs.forEach((f, sj) => pushTarget(t + interval * f, tapBase + 1 + sj));
     }
 
-    // クリック音（タツンON中は readoutClick 設定に従う）
-    const clickMode = readoutOn ? readoutClick : 'pattern';
+    // クリック音: トレーニング中は拍のみ(1・2・3・4)に固定。
+    // （出題リズムと同じ音が鳴ると今どの拍か分からなくなるため）
+    // それ以外は、タツンON中はreadoutClick設定に従い、通常はパターン通り
+    const clickMode = tapModeOn ? 'beat' : (readoutOn ? readoutClick : 'pattern');
     if (clickMode === 'pattern') {
       // リズムパターン通りに鳴らす（通常動作）
       if (!beatMuted[beat]) scheduleNote(t, isAccent, beat);
