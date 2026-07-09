@@ -1132,6 +1132,36 @@
   #tap-pad .tap-hint {
     font-size: 0.78rem; color: #888; letter-spacing: 0.03em;
   }
+  /* タイミングメーター（早い◀ 中央=ジャスト 遅い▶） */
+  #tap-meter {
+    position: relative;
+    width: 100%; max-width: 320px; height: 34px;
+    margin: 8px auto 2px; border-radius: 6px; overflow: hidden;
+    background: linear-gradient(to right,
+      rgba(231,76,60,0.22) 0%,   rgba(231,76,60,0.22) 6.7%,
+      rgba(240,160,48,0.20) 6.7%, rgba(240,160,48,0.20) 26.7%,
+      rgba(39,174,96,0.28) 26.7%, rgba(39,174,96,0.28) 73.3%,
+      rgba(240,160,48,0.20) 73.3%, rgba(240,160,48,0.20) 93.3%,
+      rgba(231,76,60,0.22) 93.3%, rgba(231,76,60,0.22) 100%);
+  }
+  .tap-meter-center {
+    position: absolute; left: 50%; top: 0; bottom: 0; width: 2px;
+    background: rgba(0,0,0,0.4); transform: translateX(-1px);
+  }
+  .tap-tick {
+    position: absolute; top: 3px; bottom: 3px; width: 3px;
+    border-radius: 2px; transform: translateX(-1.5px);
+    opacity: 1; transition: opacity 0.8s ease 0.4s;
+  }
+  .tap-tick.tap-perfect { background: #1e8449; }
+  .tap-tick.tap-good    { background: #b9770e; }
+  .tap-tick.tap-miss    { background: #a93226; }
+  .tap-meter-labels {
+    display: flex; justify-content: space-between;
+    max-width: 320px; margin: 0 auto 2px;
+    font-size: 0.64rem; color: #999; padding: 0 2px;
+  }
+
   #tap-pad .tap-verdict.v-perfect { color: #27ae60; }
   #tap-pad .tap-verdict.v-good    { color: #e67e22; }
   #tap-pad .tap-verdict.v-miss    { color: #c0392b; }
@@ -2108,6 +2138,8 @@
       <div id="tap-pad" onpointerdown="tapPadHit(event)" oncontextmenu="return false">
         <div class="tap-stats" id="tap-stats"></div>
         <div class="tap-verdict" id="tap-verdict">👆</div>
+        <div class="tap-meter" id="tap-meter"><div class="tap-meter-center"></div></div>
+        <div class="tap-meter-labels"><span>◀ 早い</span><span>ジャスト</span><span>遅い ▶</span></div>
         <div class="tap-hint" id="tap-hint">STARTを押すと1小節のカウントの後に始まります。音符のタイミングでここをタップ！（PC: スペースキー）</div>
         <div style="margin-top:10px;">
           <button id="tap-calib-btn" onpointerdown="event.stopPropagation()" onclick="toggleCalibration(event)"
@@ -4405,6 +4437,21 @@ function colorTapNote(idx, cls) {
   if (g) { g.classList.remove('tap-perfect', 'tap-good', 'tap-miss'); g.classList.add(cls); }
 }
 
+// タイミングメーターにティックを打つ（offsetSec<0=早い/左、>0=遅い/右）
+const TAP_METER_RANGE = 0.18; // ±180msでメーターの端
+function showTapMeter(offsetSec, verdictCls) {
+  const meter = document.getElementById('tap-meter');
+  if (!meter) return;
+  const clamped = Math.max(-TAP_METER_RANGE, Math.min(TAP_METER_RANGE, offsetSec));
+  const pct = 50 + (clamped / TAP_METER_RANGE) * 50;
+  const tick = document.createElement('div');
+  tick.className = 'tap-tick ' + verdictCls;
+  tick.style.left = pct + '%';
+  meter.appendChild(tick);
+  requestAnimationFrame(() => { tick.style.opacity = '0'; }); // 0.4s後にフェード（CSS）
+  setTimeout(() => tick.remove(), 1300);
+}
+
 function showTapVerdict(cls, big, small) {
   const v = document.getElementById('tap-verdict');
   const h = document.getElementById('tap-hint');
@@ -4439,6 +4486,8 @@ function judgeTap(tapTime) {
   }
   best.judged = true;
   const d = tapTime - best.time;
+  const ms = Math.abs(Math.round(d * 1000));
+  const dir = d < 0 ? '早い' : '遅い';
   if (bestAbs <= 0.07) {
     best.verdict = 'tap-perfect';
     _tapCombo++;
@@ -4446,12 +4495,13 @@ function judgeTap(tapTime) {
   } else if (bestAbs <= 0.13) {
     best.verdict = 'tap-good';
     _tapCombo = 0;
-    showTapVerdict('v-good', '○', d < 0 ? '少し早い' : '少し遅い');
+    showTapVerdict('v-good', '○', `${ms}ms ${dir}`);
   } else {
     best.verdict = 'tap-miss';
     _tapCombo = 0;
-    showTapVerdict('v-miss', '×', d < 0 ? '早すぎ' : '遅すぎ');
+    showTapVerdict('v-miss', '×', `${ms}ms ${dir}`);
   }
+  showTapMeter(d, best.verdict);
   colorTapNote(best.idx, best.verdict);
 }
 
