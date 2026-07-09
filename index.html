@@ -1202,7 +1202,8 @@
   #all-accent-btn.all-accent-active,
   #pick-btn.pick-active,
   #score-btn.score-active,
-  #readout-btn.readout-active {
+  #readout-btn.readout-active,
+  #beatclick-btn.beatclick-active {
     background: linear-gradient(to bottom, #1a1a2e, #2d2d4e) !important;
     color: #fff !important;
     border-color: #1a1a2e !important;
@@ -2280,6 +2281,22 @@
         </div>
       </div>
 
+      <!-- 拍カウント（1・2・3・4）: 再生に拍のクリックを重ねる補助 -->
+      <div class="beat-row" style="margin-top:6px;">
+        <button id="beatclick-btn" onclick="setBeatClick(!beatClickOn)" style="
+          flex:1; padding:7px 6px;
+          border:1.5px solid #c8ccd6; border-radius:8px;
+          background:linear-gradient(to bottom,#f7f8fa,#e0e3ea);
+          box-shadow:0 2px 0 #b8bcc8;
+          font-family:'Barlow Semi Condensed',sans-serif; font-size:0.85rem; font-weight:600; color:#555; cursor:pointer;
+          letter-spacing:0.03em; white-space:nowrap;
+          transition:box-shadow 0.1s,transform 0.1s,background 0.15s,color 0.15s;
+        " onmousedown="this.style.transform='translateY(2px)';this.style.boxShadow='0 0px 0 #b8bcc8'"
+           onmouseup="this.style.transform='';this.style.boxShadow='0 2px 0 #b8bcc8'"
+           ontouchstart="this.style.transform='translateY(2px)';this.style.boxShadow='0 0px 0 #b8bcc8'"
+           ontouchend="this.style.transform='';this.style.boxShadow='0 2px 0 #b8bcc8'">🥁 拍カウント（1・2・3・4）</button>
+      </div>
+
       <!-- 読み上げモード切替（タツンON時のみ表示） -->
       <div class="beat-row" id="readout-mode-row" style="display:none; margin-top:6px;">
         <div style="display:flex;gap:6px;flex:1;">
@@ -2426,6 +2443,7 @@ let allAccent = false;
 let showPick   = false;
 let showScore = false;
 let readoutOn = false; // リズム読み上げ（タ・ア・ン・ツ）ON/OFF
+let beatClickOn = false; // 拍カウント（1・2・3・4）を再生に重ねるON/OFF
 let readoutMode = 'kizami'; // 'kizami'=タアアア（細分ごとに発音） / 'nobashi'=ターーー（伸ばして発音）
 let readoutClick = 'beat'; // タツンON中のクリック音: 'pattern'=リズム通り / 'beat'=拍の頭のみ / 'off'=なし
 
@@ -2795,12 +2813,7 @@ function makeMetroSlotBtn(i) {
     + `<span class="metro-slot-num">${i+1}</span>`
     + `<span class="metro-slot-bpm" id="mslot-bpm-${i}">${bpmDisplay}</span>`
     + `</div>`
-    + `<div class="metro-slot-name" id="mslot-name-${i}"></div>`
-    + `<button class="metro-slot-dup-btn" title="複製" onclick="event.stopPropagation();duplicateMetroSlot(${i})">`
-    + `<svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.3">`
-    + `<rect x="3.5" y="3.5" width="5.5" height="5.5" rx="1"/>`
-    + `<path d="M6.5 3.5V1.5a.5.5 0 0 0-.5-.5h-4a.5.5 0 0 0-.5.5v4a.5.5 0 0 0 .5.5H3.5"/>`
-    + `</svg></button>`;
+    + `<div class="metro-slot-name" id="mslot-name-${i}"></div>`;
   // 曲名はHTMLとして解釈させずtextContentで入れる
   // （共有URL・JSONファイル由来の曲名にタグが含まれていた場合のスクリプト注入防止）
   const nameDiv = btn.querySelector('.metro-slot-name');
@@ -3375,6 +3388,27 @@ function setReadout(val) {
   const clickRow = document.getElementById('readout-click-row');
   if (clickRow) clickRow.style.display = readoutOn ? '' : 'none';
   if (readoutOn && !readoutLoaded) loadReadoutBuffers(); // 再生開始前に先読み
+}
+
+function setBeatClick(val) {
+  beatClickOn = !!val;
+  lsSet('tsg-rhythm-beatclick', beatClickOn ? '1' : '0');
+  const btn = document.getElementById('beatclick-btn');
+  if (btn) btn.classList.toggle('beatclick-active', beatClickOn);
+}
+
+// 拍カウントのクリック音。パターン音と区別できる鋭いトーン。1拍目はアクセント（高め）
+function scheduleBeatClick(time, beatIdx) {
+  const ctx = getAudioCtx();
+  const osc = ctx.createOscillator();
+  const g = ctx.createGain();
+  const isOne = (beatIdx === 0);
+  osc.type = 'triangle';
+  osc.frequency.value = isOne ? 2100 : 1500;
+  g.gain.setValueAtTime(isOne ? 0.5 : 0.32, time);
+  g.gain.exponentialRampToValueAtTime(0.001, time + 0.03);
+  osc.connect(g); g.connect(masterOut);
+  osc.start(time); osc.stop(time + 0.04);
 }
 
 function setReadoutClick(mode) {
@@ -4238,7 +4272,7 @@ function playEffect(name) {
   src.buffer = buf;
   const g = ctx.createGain();
   // クリア音は控えめ(60%)、ステージ全クリアは大きめのまま
-  g.gain.value = (name === 'stageclear') ? 0.9 : 0.54;
+  g.gain.value = (name === 'stageclear') ? 0.9 : 0.3;
   src.connect(g); g.connect(masterOut);
   src.start();
 }
@@ -4704,6 +4738,9 @@ function scheduler() {
       scheduleNote(t, isAccent, beat);
     }
     // clickMode === 'off' はクリックなし（声のみ）
+
+    // 拍カウント（1・2・3・4）: 拍の頭に別音色のクリックを重ねる（頭抜きパターンの補助）
+    if (beatClickOn) scheduleBeatClick(t, beat);
 
     // リズム読み上げ: 正解タイミング表に従い、休符(ン)も含め全スロットを発音する
     if (readoutOn) {
@@ -5645,32 +5682,32 @@ Object.assign(RHYTHM_CATEGORIES, {
     mkP('2小節チャレンジB', 62, 'ンタタアタンタタ|タタンタタアンン'),
   ],
   'stage4': [
-    // ── 1〜12番: 1小節・のばす音符（2分/付点/全音符）中心 ──
-    mkP('全音符',            78, 'タアアアアアアア'),
-    mkP('2分音符×2',        76, 'タアアアタアアア'),
-    mkP('2分＋4分4分',      74, 'タアアアタアタア'),
-    mkP('4分4分＋2分',      74, 'タアタアタアアア'),
-    mkP('付点2分＋4分',     72, 'タアアアアアタア'),
-    mkP('付点4分8分＋2分',  72, 'タアアタタアアア'),
-    mkP('2分＋8分4つ',      70, 'タアアアタタタタ'),
-    mkP('8分4つ＋2分',      70, 'タタタタタアアア'),
-    mkP('8分8分4分＋2分',   68, 'タタタアタアアア'),
-    mkP('2分＋休み＋4分',   68, 'タアアアンンタア'),
-    mkP('2分＋2分休み',     74, 'タアアアンンンン'),
-    mkP('付点4分8分＋4分4分', 72, 'タアアタタアタア'),
-    // ── 13〜24番: 2小節・のばす音符の組み合わせ ──
-    mkP('2小節A 全＋2分',   70, 'タアアアアアアア|タアアアタアアア'),
-    mkP('2小節B 2分＋全',   70, 'タアアアタアアア|タアアアアアアア'),
-    mkP('2小節C',           68, 'タアアアタアタア|タアタアタアアア'),
-    mkP('2小節D 付点2分',   68, 'タアアアアアタア|タアタアタアアア'),
-    mkP('2小節E 8分まぜ',   66, 'タアアアタタタタ|タタタタタアアア'),
-    mkP('2小節F 付点4分',   66, 'タアアタタアアア|タアアタタアアア'),
-    mkP('2小節G 全＋8分',   64, 'タアアアアアアア|タタタタタアアア'),
-    mkP('2小節H 休みまぜ',  64, 'タアアアンンタア|タアアアタアアア'),
-    mkP('2小節I',           66, 'タアタアタアアア|タアアアアアアア'),
-    mkP('2小節J 付点まぜ',  64, 'タアアタタアタア|タアアアタアアア'),
-    mkP('2小節K 休み＋のばし', 62, 'タアアアタアアア|タアアアンンタア'),
-    mkP('2小節L 総合',      62, 'タアアアタアタア|タアアタタアアア'),
+    // ── 1〜12番: 1小節・のばす音符を他のリズムと組み合わせて読む ──
+    mkP('2分＋4分4分',      0, 'タアアアタアタア'),
+    mkP('4分4分＋2分',      0, 'タアタアタアアア'),
+    mkP('付点2分＋4分',     0, 'タアアアアアタア'),
+    mkP('4分＋付点2分',     0, 'タアタアアアアア'),
+    mkP('2分＋8分4つ',      0, 'タアアアタタタタ'),
+    mkP('8分4つ＋2分',      0, 'タタタタタアアア'),
+    mkP('付点4分8分＋2分',  0, 'タアアタタアアア'),
+    mkP('2分＋4分＋休符',   0, 'タアアアタアンン'),
+    mkP('8分8分＋2分＋4分', 0, 'タタタアアアタア'),
+    mkP('4分＋2分＋4分',    0, 'タアタアアアタア'),
+    mkP('4分＋休符＋2分',   0, 'タアンンタアアア'),
+    mkP('付点4分8分4分＋4分', 0, 'タアアタタアタア'),
+    // ── 13〜24番: 2小節・のばす音符といろいろなリズムの組み合わせ ──
+    mkP('2小節A',           0, 'タアアアタアタア|タアタアタアアア'),
+    mkP('2小節B 8分まぜ',   0, 'タアアアタタタタ|タタタタタアアア'),
+    mkP('2小節C 付点',      0, 'タアアタタアアア|タアアアアアタア'),
+    mkP('2小節D',           0, 'タタタアアアタア|タアタアタアアア'),
+    mkP('2小節E',           0, 'タアタアアアタア|タアアアタアタア'),
+    mkP('2小節F 休符まぜ',  0, 'タアンンタアアア|タタタタタアアア'),
+    mkP('2小節G 付点2分',   0, 'タアアアアアタア|タアタアアアアア'),
+    mkP('2小節H 8分いろいろ', 0, 'タタタタタアタア|タアアアタタタタ'),
+    mkP('2小節I 付点まぜ',  0, 'タアアタタアタア|タアタアタアアア'),
+    mkP('2小節J 休符',      0, 'タアアアタアンン|タアタアタアアア'),
+    mkP('2小節K',           0, 'タタタアアアタア|タアアタタアタア'),
+    mkP('2小節L 総合',      0, 'タアタアアアタア|タアアタタアアア'),
   ],
   'stage5': [
     // ── 1〜12番: 1小節・タイ。2拍目の裏(8分)を3拍目頭に繋ぐシンコペーションが中心。約6割にタイ ──
@@ -5714,6 +5751,19 @@ Object.assign(RHYTHM_CATEGORIES, {
     mkP('総合チャレンジA',   52, 'タアタタタタタアタアアタタタタア', 'sixteenth'),
     mkP('総合チャレンジB',   52, 'タタタアタアアタンタタタタアアア', 'sixteenth'),
   ],
+});
+
+// 各ステージのテンポをスロット順に段階的に上げる（下のスロットほど速い）。
+// mkPに渡したbpmはここで上書きされる。範囲はステージの難易度に応じて設定。
+const STAGE_TEMPO = {
+  stage1: [76, 116], stage2: [72, 112], stage3: [66, 104],
+  stage4: [84, 120], stage5: [66, 102], stage6: [56, 82],
+};
+Object.keys(STAGE_TEMPO).forEach(k => {
+  const cat = RHYTHM_CATEGORIES[k];
+  if (!cat || cat.length < 2) return;
+  const [lo, hi] = STAGE_TEMPO[k];
+  cat.forEach((p, i) => { p.bpm = Math.round(lo + (hi - lo) * i / (cat.length - 1)); });
 });
 
 function loadRhythmCategory(categoryKey) {
@@ -6185,6 +6235,9 @@ if (localStorage.getItem('tsg-rhythm-showScore') === '1') {
 // カテゴリ選択にクリア進捗を表示・現在地バー初期化
 updateCategoryProgress();
 updateNowBar();
+
+// 拍カウントの状態を復元
+if (localStorage.getItem('tsg-rhythm-beatclick') === '1') setBeatClick(true);
 
 // 読み上げ（タツン）の状態を復元
 setReadoutMode(localStorage.getItem('tsg-rhythm-readout-mode') || 'kizami');
