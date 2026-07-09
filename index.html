@@ -1132,34 +1132,38 @@
   #tap-pad .tap-hint {
     font-size: 0.78rem; color: #888; letter-spacing: 0.03em;
   }
-  /* タイミングメーター（早い◀ 中央=ジャスト 遅い▶） */
+  /* タイミングメーター（早い◀ 中央=ジャスト 遅い▶）— 暗い計器風・コンパクト */
   #tap-meter {
     position: relative;
-    width: 100%; max-width: 320px; height: 34px;
-    margin: 8px auto 2px; border-radius: 6px; overflow: hidden;
-    background: linear-gradient(to right,
-      rgba(231,76,60,0.22) 0%,   rgba(231,76,60,0.22) 6.7%,
-      rgba(240,160,48,0.20) 6.7%, rgba(240,160,48,0.20) 26.7%,
-      rgba(39,174,96,0.28) 26.7%, rgba(39,174,96,0.28) 73.3%,
-      rgba(240,160,48,0.20) 73.3%, rgba(240,160,48,0.20) 93.3%,
-      rgba(231,76,60,0.22) 93.3%, rgba(231,76,60,0.22) 100%);
+    width: 100%; max-width: 300px; height: 22px;
+    margin: 6px auto 3px; border-radius: 11px; overflow: hidden;
+    background:
+      linear-gradient(to right,
+        rgba(231,76,60,0.55) 0%,    rgba(231,76,60,0.55) 13.9%,
+        rgba(240,170,60,0.42) 13.9%, rgba(240,170,60,0.42) 33.3%,
+        rgba(46,204,113,0.55) 33.3%, rgba(46,204,113,0.55) 66.7%,
+        rgba(240,170,60,0.42) 66.7%, rgba(240,170,60,0.42) 86.1%,
+        rgba(231,76,60,0.55) 86.1%, rgba(231,76,60,0.55) 100%),
+      linear-gradient(#20242f, #14171f);
+    box-shadow: inset 0 1px 4px rgba(0,0,0,0.55), 0 1px 0 rgba(255,255,255,0.18);
   }
   .tap-meter-center {
-    position: absolute; left: 50%; top: 0; bottom: 0; width: 2px;
-    background: rgba(0,0,0,0.4); transform: translateX(-1px);
+    position: absolute; left: 50%; top: 1px; bottom: 1px; width: 2px;
+    background: rgba(255,255,255,0.92); transform: translateX(-1px);
+    box-shadow: 0 0 5px rgba(255,255,255,0.75);
   }
   .tap-tick {
-    position: absolute; top: 3px; bottom: 3px; width: 3px;
+    position: absolute; top: 2px; bottom: 2px; width: 3px;
     border-radius: 2px; transform: translateX(-1.5px);
-    opacity: 1; transition: opacity 0.8s ease 0.4s;
+    opacity: 1; transition: opacity 0.7s ease 0.45s;
   }
-  .tap-tick.tap-perfect { background: #1e8449; }
-  .tap-tick.tap-good    { background: #b9770e; }
-  .tap-tick.tap-miss    { background: #a93226; }
+  .tap-tick.tap-perfect { background: #7dffb0; box-shadow: 0 0 7px #27ae60; }
+  .tap-tick.tap-good    { background: #ffd684; box-shadow: 0 0 7px #e6941e; }
+  .tap-tick.tap-miss    { background: #ff8f7f; box-shadow: 0 0 7px #c0392b; }
   .tap-meter-labels {
     display: flex; justify-content: space-between;
-    max-width: 320px; margin: 0 auto 2px;
-    font-size: 0.64rem; color: #999; padding: 0 2px;
+    max-width: 300px; margin: 0 auto 2px;
+    font-size: 0.58rem; color: #a8adb8; padding: 0 6px; letter-spacing: 0.03em;
   }
 
   #tap-pad .tap-verdict.v-perfect { color: #27ae60; }
@@ -4488,7 +4492,7 @@ function judgeTap(tapTime) {
   const d = tapTime - best.time;
   const ms = Math.abs(Math.round(d * 1000));
   const dir = d < 0 ? '早い' : '遅い';
-  if (bestAbs <= 0.07) {
+  if (bestAbs <= 0.06) {
     best.verdict = 'tap-perfect';
     _tapCombo++;
     showTapVerdict('v-perfect', '◎', _tapCombo >= 3 ? `ジャスト！ 🔥${_tapCombo}連続` : 'ジャスト！');
