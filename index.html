@@ -5988,153 +5988,30 @@ function renderAbcScore(slotIdx) {
     _abcCurrentWindow = 0;
     scrollInner.style.transform = 'translateY(0)';
   } else if (!isMobile && measures.length > 1) {
-    // ── PC・2小節以上: 1小節ずつ縦並び（全拍完全縦揃え）──
+    // ── PC・2小節以上: 各小節を独立に描いて縦並び ──
+    // （旧実装はgetBBoxで座標を読み手動で縦揃えしていたが、連桁が音符から外れる崩れの
+    //   原因になっていたため撤廃。abcjsの描画をそのまま使い、堅牢にした）
     abcArea.innerHTML = '';
     const staffW = Math.max(300, abcArea.offsetWidth - 30);
-    const renderResults = [];
-
-    // 1パス目：全行レンダリング（結果オブジェクトを保存）
     measures.forEach((measure, idx) => {
       const div = document.createElement('div');
       div.id = `abc-m${idx}`;
       if (idx > 0) div.style.marginTop = '2px';
       abcArea.appendChild(div);
-      const res = ABCJS.renderAbc(`abc-m${idx}`, `X:1\nM:4/4\nL:1/8\n%%stafflines 1\nK:perc\n${measure}|`, {
+      ABCJS.renderAbc(`abc-m${idx}`, `X:1\nM:4/4\nL:1/8\n%%stafflines 1\nK:perc\n${measure}|`, {
         staffwidth: staffW, add_classes: true,
-        paddingtop: 8, paddingbottom: 16, paddingleft: 15, paddingright: 15,
+        paddingtop: 8, paddingbottom: 12, paddingleft: 15, paddingright: 15,
       });
-      renderResults.push(res);
-    });
-
-    // 2パス目：最大バーライン位置の行を基準行として特定
-    let maxBarX = 0, refIdx = 0;
-    measures.forEach((_, idx) => {
-      const svg = document.getElementById(`abc-m${idx}`)?.querySelector('svg');
-      if (!svg) return;
-      const bars = svg.querySelectorAll('.abcjs-bar');
-      const lastBar = bars[bars.length - 1];
-      if (lastBar) {
-        const barX = lastBar.getBBox().x;
-        if (barX > maxBarX) { maxBarX = barX; refIdx = idx; }
-      }
-    });
-
-    // 基準行（最大密度小節）のグリッドマップ: 時間位置(×10000) → SVG x座標
-    const gridMap = {};
-    const refVoices = renderResults[refIdx]?.[0]?.lines?.[0]?.staff?.[0]?.voices?.[0] || [];
-    const refSvg = document.getElementById(`abc-m${refIdx}`)?.querySelector('svg');
-    const refNoteEls = refSvg ? Array.from(refSvg.querySelectorAll('.abcjs-note, .abcjs-rest')) : [];
-    let tPos = 0, nIdx = 0;
-    refVoices.forEach(el => {
-      if (el.el_type === 'note' || el.el_type === 'rest') {
-        if (refNoteEls[nIdx]) gridMap[Math.round(tPos * 10000)] = refNoteEls[nIdx].getBBox().x;
-        tPos += el.duration; nIdx++;
-      }
-    });
-
-    const vbW = Math.round(maxBarX + 20);
-
-    // 五線pathを指定Xまで延長するヘルパー
-    function extendStaffLines(svg, targetX) {
-      svg.querySelectorAll('path').forEach(path => {
-        const d = path.getAttribute('d');
-        if (!d) return;
-        // 五線パターン: "M 15 Y1 L X Y1 L X Y2 L 15 Y2 z"
-        const m = d.match(/^M 15 ([\d.]+) L ([\d.]+) ([\d.]+) L ([\d.]+) ([\d.]+) L 15 ([\d.]+) z$/);
-        if (m) {
-          const y1 = m[1], y2 = m[6], newX = (targetX + 0.5).toFixed(2);
-          path.setAttribute('d', `M 15 ${y1} L ${newX} ${y1} L ${newX} ${y2} L 15 ${y2} z`);
-        }
-      });
-    }
-
-    // SVG全要素のY範囲を計算するヘルパー
-    function calcYBounds(svg) {
-      let minY = Infinity, maxY = -Infinity;
-      svg.querySelectorAll('path, rect, text, use').forEach(el => {
-        try {
-          const bb = el.getBBox();
-          if (bb.height > 0) { minY = Math.min(minY, bb.y); maxY = Math.max(maxY, bb.y + bb.height); }
-        } catch(e) {}
-      });
-      return { minY: isFinite(minY) ? minY : 8, maxY: isFinite(maxY) ? maxY : 55 };
-    }
-
-    // 3パス目：各行を基準グリッドに整列 + 五線延長 + viewBox統一
-    let globalMinY = Infinity, globalMaxY = -Infinity;
-    measures.forEach((_, idx) => {
-      const svg = document.getElementById(`abc-m${idx}`)?.querySelector('svg');
-      if (!svg) return;
-      const { minY, maxY } = calcYBounds(svg);
-      globalMinY = Math.min(globalMinY, minY);
-      globalMaxY = Math.max(globalMaxY, maxY);
-    });
-    // 上下に最小限の余白だけ付ける（見切れ防止: 上4px・下6px）
-    const vbYStart = Math.max(0, Math.floor(globalMinY) - 4);
-    const vbYEnd   = Math.ceil(globalMaxY) + 6;
-    const vbH = vbYEnd - vbYStart;
-    // 左余白: タイムシグネチャの左端から始める（スマホと同様）
-    const timeSigEl = refSvg?.querySelector('.abcjs-time-signature');
-    const vbXStart = timeSigEl ? Math.max(0, Math.floor(timeSigEl.getBBox().x) - 5) : 15;
-
-    measures.forEach((_, idx) => {
-      const div = document.getElementById(`abc-m${idx}`);
-      const svg = div?.querySelector('svg');
-      if (!svg) return;
-      // abcjsがdivに設定するoverflow:hidden / height を解除
-      if (div) { div.style.overflow = ''; div.style.height = ''; }
-      svg.removeAttribute('height');
-      svg.style.width = '80%';
-      svg.style.display = 'block';
-      svg.style.margin = '0 auto';
-      svg.style.height = 'auto';
-      svg.setAttribute('viewBox', `${vbXStart} ${vbYStart} ${vbW - vbXStart} ${vbH}`);
-
-      if (idx !== refIdx) {
-        // 音符・休符を基準グリッドに整列（translate で各要素を移動）
-        const voices = renderResults[idx]?.[0]?.lines?.[0]?.staff?.[0]?.voices?.[0] || [];
-        const svgNoteEls = Array.from(svg.querySelectorAll('.abcjs-note, .abcjs-rest'));
-        const stemXToDx = {}; // stem元のx → dx（beam移動用）
-        let tp = 0, ni = 0;
-        voices.forEach(el => {
-          if (el.el_type === 'note' || el.el_type === 'rest') {
-            const noteEl = svgNoteEls[ni++];
-            const targetX = gridMap[Math.round(tp * 10000)];
-            if (noteEl && targetX !== undefined) {
-              const dx = targetX - noteEl.getBBox().x;
-              if (Math.abs(dx) > 0.5) {
-                noteEl.setAttribute('transform', `translate(${dx.toFixed(1)},0)`);
-                // stemのx座標をキーにdxを記録（beam整列用）
-                const stemEl = noteEl.querySelector('.abcjs-stem');
-                if (stemEl) {
-                  const sm = stemEl.getAttribute('d')?.match(/^M ([\d.]+)/);
-                  if (sm) stemXToDx[parseFloat(sm[1])] = dx;
-                }
-              }
-            }
-            tp += el.duration;
-          }
-        });
-        // バーラインも基準バーライン位置に整列
-        svg.querySelectorAll('.abcjs-bar').forEach(bar => {
-          const dx = maxBarX - bar.getBBox().x;
-          if (Math.abs(dx) > 0.5) bar.setAttribute('transform', `translate(${dx.toFixed(1)},0)`);
-        });
-        // beam（path.abcjs-beam-elem）も対応するstemのdxで移動
-        svg.querySelectorAll('path.abcjs-beam-elem').forEach(beam => {
-          const d = beam.getAttribute('d');
-          const mMatch = d?.match(/^M([\d.]+)/);
-          if (!mMatch) return;
-          const beamStartX = parseFloat(mMatch[1]);
-          let closestDx = 0, closestDist = Infinity;
-          Object.entries(stemXToDx).forEach(([sx, dx]) => {
-            const dist = Math.abs(parseFloat(sx) - beamStartX);
-            if (dist < closestDist) { closestDist = dist; closestDx = dx; }
-          });
-          if (Math.abs(closestDx) > 0.5) beam.setAttribute('transform', `translate(${closestDx.toFixed(1)},0)`);
-        });
-        // 五線をバーライン位置まで延長
-        extendStaffLines(svg, maxBarX);
+      const div2 = document.getElementById(`abc-m${idx}`);
+      const svg = div2 ? div2.querySelector('svg') : null;
+      if (svg) {
+        if (div2) { div2.style.overflow = ''; div2.style.height = ''; }
+        svg.removeAttribute('height');
+        svg.style.width = '80%';
+        svg.style.display = 'block';
+        svg.style.margin = '0 auto';
+        svg.style.height = 'auto';
+        _trimAbcViewBox(div2);
       }
     });
   } else {
