@@ -1163,26 +1163,27 @@
   /* ===== 現在地バー（今のステージ・問題を常設表示） ===== */
   #now-bar {
     display: none; align-items: center; gap: 8px;
-    margin: 0 0 8px; padding: 5px 8px;
-    background: linear-gradient(120deg, #eaf2f9, #d9e7f4);
-    border: 1px solid #bcd2e6; border-radius: 9px;
+    margin: 0 0 8px; padding: 6px 8px;
+    background: linear-gradient(120deg, #2176ae, #14547f);
+    border-radius: 9px;
+    box-shadow: 0 2px 6px rgba(20,84,127,0.3);
   }
   .now-bar-center { flex: 1; min-width: 0; text-align: center; line-height: 1.18; }
   .now-bar-stage {
-    font-size: 0.66rem; font-weight: 700; color: #1a5f8a;
+    font-size: 0.66rem; font-weight: 700; color: rgba(255,255,255,0.78);
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   }
   .now-bar-slot {
-    font-size: 0.92rem; font-weight: 700; color: #14304a;
+    font-size: 0.95rem; font-weight: 700; color: #fff;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   }
   .now-nav-btn {
     width: 34px; height: 34px; flex-shrink: 0;
-    border: 1px solid #b0c0d8; border-radius: 8px;
-    background: #fff; color: #2176ae; font-size: 0.82rem; font-weight: 700;
+    border: 1px solid rgba(255,255,255,0.4); border-radius: 8px;
+    background: rgba(255,255,255,0.12); color: #fff; font-size: 0.82rem; font-weight: 700;
     cursor: pointer; line-height: 1;
   }
-  .now-nav-btn:active { background: #dce8f4; }
+  .now-nav-btn:active { background: rgba(255,255,255,0.28); }
   .now-nav-btn:disabled { opacity: 0.3; cursor: default; }
 
   /* ===== タップ練習モード ===== */
@@ -1224,13 +1225,13 @@
     margin: 6px auto 3px; border-radius: 11px; overflow: hidden;
     background:
       linear-gradient(to right,
-        rgba(231,76,60,0.55) 0%,    rgba(231,76,60,0.55) 13.9%,
-        rgba(240,170,60,0.42) 13.9%, rgba(240,170,60,0.42) 33.3%,
-        rgba(46,204,113,0.55) 33.3%, rgba(46,204,113,0.55) 66.7%,
-        rgba(240,170,60,0.42) 66.7%, rgba(240,170,60,0.42) 86.1%,
-        rgba(231,76,60,0.55) 86.1%, rgba(231,76,60,0.55) 100%),
-      linear-gradient(#20242f, #14171f);
-    box-shadow: inset 0 1px 4px rgba(0,0,0,0.55), 0 1px 0 rgba(255,255,255,0.18);
+        rgba(235,77,61,0.92) 0%,    rgba(235,77,61,0.92) 13.9%,
+        rgba(247,176,42,0.9) 13.9%, rgba(247,176,42,0.9) 33.3%,
+        rgba(46,213,115,0.95) 33.3%, rgba(46,213,115,0.95) 66.7%,
+        rgba(247,176,42,0.9) 66.7%, rgba(247,176,42,0.9) 86.1%,
+        rgba(235,77,61,0.92) 86.1%, rgba(235,77,61,0.92) 100%),
+      linear-gradient(#2a3040, #1a1e2a);
+    box-shadow: inset 0 1px 4px rgba(0,0,0,0.35), 0 1px 0 rgba(255,255,255,0.18);
   }
   .tap-meter-center {
     position: absolute; left: 50%; top: 1px; bottom: 1px; width: 2px;
@@ -1240,11 +1241,17 @@
   .tap-tick {
     position: absolute; top: 2px; bottom: 2px; width: 4px;
     border-radius: 2px; transform: translateX(-2px);
-    opacity: 1; transition: opacity 1.2s ease 1s;
+    /* transition+rAF方式は挿入フレームと重なると一度も描画されないため、CSSアニメで確実に表示 */
+    animation: tickFade 2.2s ease forwards;
   }
-  .tap-tick.tap-perfect { background: #7dffb0; box-shadow: 0 0 7px #27ae60; }
-  .tap-tick.tap-good    { background: #ffd684; box-shadow: 0 0 7px #e6941e; }
-  .tap-tick.tap-miss    { background: #ff8f7f; box-shadow: 0 0 7px #c0392b; }
+  @keyframes tickFade { 0%, 50% { opacity: 1; } 100% { opacity: 0; } }
+  /* ティックは濃紺＋白フチ（鮮やかな帯の上でも必ず見える。当たり具合は帯の色が示す） */
+  .tap-tick.tap-perfect,
+  .tap-tick.tap-good,
+  .tap-tick.tap-miss {
+    background: #141824;
+    box-shadow: 0 0 0 1.5px rgba(255,255,255,0.9), 0 0 6px rgba(0,0,0,0.5);
+  }
   .tap-meter-labels {
     display: flex; justify-content: space-between;
     max-width: 300px; margin: 0 auto 2px;
@@ -2224,6 +2231,8 @@
       <div style="margin-bottom:10px;">👆 <b>② タイミングよくタップ</b><br><span style="font-size:0.8rem;color:#666;">カウントのあと、音符のタイミングでパッドを叩こう</span></div>
       <div>⭐ <b>③ 4小節ノーミスでクリア！</b><br><span style="font-size:0.8rem;color:#666;">全ステージ制覇を目指そう</span></div>
     </div>
+    <p style="font-size:0.74rem; color:#888; margin:0 0 12px; line-height:1.5;">
+      ※はじめに一度だけ「タイミング補正」を行います。<br>クリックに合わせて8回タップして、端末の音ズレを測ります。</p>
     <button onclick="closeOnboard(true)"
       style="width:100%; padding:13px; background:linear-gradient(to bottom,#34b56f,#26965a); color:#fff;
              border:none; border-radius:10px; font-size:1rem; font-weight:700; cursor:pointer;
@@ -2320,7 +2329,7 @@
 
       <div class="btn-row" style="margin-bottom:6px;">
         <button class="btn btn-train" id="tapmode-btn" onclick="setTapMode(!tapModeOn)" style="flex:1.6;"><span class="train-label">RHYTHM<br>TRAINER</span></button>
-        <button class="btn btn-primary" id="start-btn" onclick="toggleMetronome()">METRO</button>
+        <button class="btn btn-primary" id="start-btn" onclick="startMetroPlain()" title="ゲームではなく、今のリズムをメトロノームのように鳴らして確認">METRO</button>
       </div>
 
       <div class="section-label">Sound</div>
@@ -4317,6 +4326,7 @@ function scheduleReadoutVoice(time, type) {
 // 正解タイミング表のアタック（hit/brush）だけが「叩くべき正解」。ア・ンは叩かない。
 // 判定: ±60ms=◎ / ±120ms=○ / ±150msまで=×(マッチ) / それ以外=余分なタップ×
 let tapModeOn = false;
+let gameActive = false;     // true=ゲームとして再生中（カウントイン・採点あり）/ false=METROの確認再生
 let tapTargets = [];        // {time, idx, loopNo, judged, verdict} スケジューラが積む
 let tapExtra = 0;           // 余分なタップ数（ループごとにリセット）
 let _tapLoopNo = 0;
@@ -4442,12 +4452,19 @@ function updateStartCard() {
   if (card) card.style.display = _currentCategoryKey ? 'none' : 'block';
 }
 
-// 1タップでステージ1＋トレーニング開始
+// 1タップでステージ1＋トレーニング開始。
+// 補正未計測の端末は、判定がズレて楽しめないため先にタイミング補正へ誘導する
 function startFirstPlay() {
   loadRhythmCategory('stage1');
   updateStartCard();
   if (!tapModeOn) setTapMode(true);
-  if (!metronomeRunning) toggleMetronome();
+  if (tapCalibOffset === null) {
+    startCalibration();
+    showToast('🎯 まずは端末の音ズレを補正！クリックに合わせてタップ');
+  } else if (!metronomeRunning) {
+    gameActive = true;
+    toggleMetronome();
+  }
 }
 
 // 初回のみの遊びかたオーバーレイ
@@ -4538,6 +4555,7 @@ function _advanceToNextSlot() {
   selectMetroSlot(next);
   renderAbcScore(next);
   showToast('▶ 次の問題: ' + (metroNames[next] || (next + 1) + '番'));
+  gameActive = true;
   toggleMetronome(); // カウントインから再開
 }
 
@@ -4756,9 +4774,8 @@ function showTapMeter(offsetSec, verdictCls) {
   const tick = document.createElement('div');
   tick.className = 'tap-tick ' + verdictCls;
   tick.style.left = pct + '%';
-  meter.appendChild(tick);
-  requestAnimationFrame(() => { tick.style.opacity = '0'; }); // 1s後にフェード開始（CSS）
-  setTimeout(() => tick.remove(), 2300);
+  meter.appendChild(tick); // 表示〜フェードはCSSアニメ（tickFade）が担当
+  setTimeout(() => tick.remove(), 2400);
 }
 
 function showTapVerdict(cls, big, small) {
@@ -4774,7 +4791,13 @@ function tapPadHit(e) {
   if (!tapModeOn) return;
   const ctx = getAudioCtx();
   if (calibOn) { calibTapAt(ctx.currentTime); return; }  // 補正計測中
-  if (!metronomeRunning) { toggleMetronome(); return; } // 停止中のタップ＝スタート
+  if (!metronomeRunning) { gameActive = true; toggleMetronome(); return; } // 停止中のタップ＝ゲーム開始
+  if (!gameActive) { // METROの確認再生中にパッドタップ → ゲームとして仕切り直し
+    toggleMetronome();
+    gameActive = true;
+    toggleMetronome();
+    return;
+  }
   if (_tapCountInLeft > 0) return;                      // カウントイン中は判定しない
   judgeTap(ctx.currentTime - effectiveTapOffset());      // 端末遅延を補正して判定
 }
@@ -4897,8 +4920,8 @@ function scheduler() {
     // 拍内サブ音のオフセット係数（音・フラッシュ・読み上げ共通）
     const subOffs = getSubOffsets();
 
-    // タップ練習: 叩くべきアタック時刻を記録＋ループ境界の集計予約
-    if (tapModeOn) {
+    // タップ練習: 叩くべきアタック時刻を記録＋ループ境界の集計予約（ゲーム中のみ）
+    if (tapModeOn && gameActive) {
       const tapTable = getTimingTable();
       const tapBase = beat * (1 + subOffs.length);
       if (beat === 0) {
@@ -4917,10 +4940,10 @@ function scheduler() {
       subOffs.forEach((f, sj) => pushTarget(t + interval * f, tapBase + 1 + sj));
     }
 
-    // クリック音: トレーニング中は拍のみ(1・2・3・4)に固定。
+    // クリック音: ゲーム中は拍のみ(1・2・3・4)に固定。
     // （出題リズムと同じ音が鳴ると今どの拍か分からなくなるため）
-    // それ以外は、タツンON中はreadoutClick設定に従い、通常はパターン通り
-    const clickMode = tapModeOn ? 'beat' : (readoutOn ? readoutClick : 'pattern');
+    // METROの確認再生はパターン通り。タツンON中はreadoutClick設定に従う
+    const clickMode = (tapModeOn && gameActive) ? 'beat' : (readoutOn ? readoutClick : 'pattern');
     if (clickMode === 'pattern') {
       // リズムパターン通りに鳴らす（通常動作）
       if (!beatMuted[beat]) scheduleNote(t, isAccent, beat);
@@ -5040,6 +5063,13 @@ document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'visible') updateWakeLock();
 });
 
+// METROボタン: ゲームではなく「今のリズムをメトロノームのように鳴らす」確認用の再生
+function startMetroPlain() {
+  if (metronomeRunning) { toggleMetronome(); return; } // 再生中は停止として機能
+  gameActive = false;
+  toggleMetronome();
+}
+
 function toggleMetronome() {
   const btn = document.getElementById('start-btn');
   const card = document.getElementById('metro-card');
@@ -5048,7 +5078,7 @@ function toggleMetronome() {
     const _startMetro = () => {
       if (currentSound === 'voice' && !voiceLoaded) loadVoiceBuffers();
       if (readoutOn && !readoutLoaded) loadReadoutBuffers();
-      if (tapModeOn) {
+      if (tapModeOn && gameActive) {
         resetTapSession();
         _tapCountInLeft = 4; // 1小節カウントイン
         const h = document.getElementById('tap-hint');
