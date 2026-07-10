@@ -180,47 +180,45 @@
   }
 
   /* ===== METRONOME ===== */
-  /* BPM表示: メトロノームではないので控えめなピル型（数字＋BPMを横並び） */
-  .bpm-display {
+  /* BPM表示: スライダー行の左に置く小さなピル（メトロノームではないので控えめに） */
+  .bpm-inline {
     display: flex;
     align-items: baseline;
-    justify-content: center;
-    gap: 7px;
-    margin: 0 auto 10px;
-    max-width: 180px;
+    gap: 5px;
+    flex-shrink: 0;
     background: linear-gradient(160deg, #1a3a52, #0e2536);
-    border-radius: 10px;
-    padding: 6px 16px 5px;
+    border-radius: 8px;
+    padding: 4px 10px 3px;
     border: 1px solid rgba(255,255,255,0.06);
-    box-shadow: inset 0 2px 8px rgba(0,0,0,0.3), inset 0 -1px 0 rgba(255,255,255,0.04);
+    box-shadow: inset 0 1px 5px rgba(0,0,0,0.3);
     transition: box-shadow 0.5s ease;
+    cursor: pointer;
   }
 
   .bpm-number {
     font-family: 'Oswald', sans-serif;
-    font-size: 1.8rem;
+    font-size: 1.15rem;
     font-weight: 700;
     color: #eef0ff;
     line-height: 1;
     letter-spacing: 0.02em;
-    transition: color 0.5s ease, text-shadow 0.5s ease;
+    transition: color 0.5s ease;
   }
 
   .bpm-label {
-    font-size: 0.62rem;
+    font-size: 0.52rem;
     color: rgba(200,210,230,0.45);
-    letter-spacing: 0.2em;
+    letter-spacing: 0.16em;
     text-transform: uppercase;
   }
 
   /* C: 起動中グロー */
-  #metro-card.metro-running .bpm-display {
-    box-shadow: inset 0 2px 10px rgba(0,0,0,0.3), inset 0 -1px 0 rgba(255,255,255,0.04),
-                0 0 0 2px rgba(210,65,50,0.3), 0 0 24px rgba(210,65,50,0.14);
+  #metro-card.metro-running .bpm-inline {
+    box-shadow: inset 0 1px 5px rgba(0,0,0,0.3),
+                0 0 0 2px rgba(210,65,50,0.3), 0 0 14px rgba(210,65,50,0.14);
   }
   #metro-card.metro-running .bpm-number {
     color: #ffb8b0;
-    text-shadow: 0 0 28px rgba(255,100,80,0.4);
   }
 
   /* B: セクション区切りラベル */
@@ -1077,14 +1075,14 @@
   /* BPM直接入力（ダブルクリックで表示） */
   #bpm-direct-input {
     font-family: 'Oswald', sans-serif;
-    font-size: 1.8rem;
+    font-size: 1.15rem;
     font-weight: 700;
     color: #eef0ff;
     background: transparent;
     border: none;
     border-bottom: 2px solid rgba(255,255,255,0.4);
     text-align: center;
-    width: 84px;
+    width: 52px;
     outline: none;
     line-height: 1;
     padding: 0;
@@ -1204,28 +1202,27 @@
   /* 練習メニューの見出し（トグル廃止・常時表示） */
   .menu-heading {
     display: flex;
-    align-items: center;
+    align-items: baseline;
     gap: 10px;
-    padding: 10px 14px;
-    margin-bottom: 12px;
+    padding: 6px 12px;
+    margin-bottom: 10px;
     background: linear-gradient(120deg, #2176ae, #14547f);
-    border-radius: 10px;
-    box-shadow: 0 2px 8px rgba(20,84,127,0.25);
+    border-radius: 8px;
+    box-shadow: 0 2px 6px rgba(20,84,127,0.25);
   }
-  .menu-heading-icon { font-size: 1.3rem; }
   .menu-heading-title {
     font-family: 'Oswald', sans-serif;
-    font-size: 1.02rem;
+    font-size: 0.95rem;
     font-weight: 600;
     color: #fff;
     letter-spacing: 0.14em;
     line-height: 1.1;
+    white-space: nowrap;
   }
   .menu-heading-sub {
-    font-size: 0.68rem;
+    font-size: 0.66rem;
     color: rgba(255,255,255,0.75);
     letter-spacing: 0.03em;
-    margin-top: 2px;
   }
 
   /* Optionsは3列グリッドで折り返す（スマホでのはみ出し防止・5個目の拍ガイドも収まる） */
@@ -2090,66 +2087,66 @@
 <div class="modal-overlay" id="help-modal" onclick="if(event.target===this)this.classList.remove('open')">
   <div class="modal-box">
     <button class="modal-close" onclick="document.getElementById('help-modal').classList.remove('open')">×</button>
-    <div class="modal-title">💡 使い方ガイド</div>
-    <p style="font-size:0.82rem; color:#555; margin:0 0 16px; line-height:1.6;">プロギタリスト監修のTSGならではの便利機能を使いこなしましょう。</p>
+    <div class="modal-title">💡 これ、知ってましたか？</div>
+    <p style="font-size:0.82rem; color:#555; margin:0 0 16px; line-height:1.6;">リズムトレーナーの遊び方と、知っていると練習がはかどる機能を紹介します。</p>
 
     <div class="modal-section">
-      <div class="modal-section-title">🎵 Metronome — BPM設定</div>
+      <div class="modal-section-title">🎮 RHYTHM TRAINER — ゲームで練習</div>
       <div class="tip-item">
-        <div class="tip-title red">👆 TAPボタンで曲のテンポを自動計測</div>
-        <div class="tip-desc">曲を聴きながらTAPをリズムに合わせて叩くだけでBPMを計測します。「この曲何BPMだろう？」という時に便利です。</div>
+        <div class="tip-title red">⭐ 連続4小節ノーミスで「クリア」できます</div>
+        <div class="tip-desc">緑の「RHYTHM TRAINER」ボタンでゲーム開始。1・2・3・4のカウントのあと、譜面の音符のタイミングでパッドをタップ！ 基準テンポ以上で連続4小節ノーミス（×ゼロ）ならクリアです。クリアした問題には⭐が付き、ステージの全問クリアでファンファーレが鳴ります。</div>
       </div>
       <div class="tip-item">
-        <div class="tip-title">＋／－ボタンは長押しで高速変更できます</div>
-        <div class="tip-desc">1回タップで±1BPM。押し続けると自動的に加速していきます。大まかに変えてから微調整はスライダーで、という使い方がおすすめです。</div>
+        <div class="tip-title red">⏱ 最初に「タイミング補正」をしましょう</div>
+        <div class="tip-desc">スマホは機種ごとに音の遅れが違うため、正確に叩いても「遅い」と判定されることがあります。パッド内の「⏱ タイミング補正」でクリックに合わせて8回タップすると、端末のズレを自動補正します。それでも合わない時は「− 早め／遅め ＋」で微調整できます。</div>
+      </div>
+      <div class="tip-item">
+        <div class="tip-title">📊 メーターで自分のクセが見えます</div>
+        <div class="tip-desc">叩くたびに、ズレた方向と量がメーターに線で表示されます。線が左に寄る人は走り気味、右に寄る人はもたり気味。真ん中の緑ゾーンに集まるように練習しましょう。ズレのミリ秒数も毎回表示されます。</div>
       </div>
     </div>
 
     <div class="modal-section">
-      <div class="modal-section-title">🥁 Metronome — リズムパターン</div>
+      <div class="modal-section-title">🎯 練習メニュー — ステージと問題</div>
       <div class="tip-item">
-        <div class="tip-title red">👆 ビートドットをタップして好きな音だけ鳴らせます</div>
-        <div class="tip-desc">画面のビートドット（○）をタップすると、その拍や細分割をON/OFFできます。「2拍目と4拍目だけ」「裏拍だけ」など自分でカスタムできます。</div>
+        <div class="tip-title red">ステージ（難易度）を選ぶと問題が読み込まれます</div>
+        <div class="tip-desc">ステージ1（4分音符と休符）から順に進むのがおすすめ。スロットをタップすると譜面とテンポが一発で切り替わります。譜面の上の「◀ ▶」でも前後の問題に移動できます。</div>
       </div>
       <div class="tip-item">
-        <div class="tip-title">🔇 MUTEで音を消して目だけで確認</div>
-        <div class="tip-desc">MUTEをオンにすると音は消えますが、ビートドットは動き続けます。夜間の練習やバンドリハでの目視確認に使えます。</div>
-      </div>
-    </div>
-
-    <div class="modal-section">
-      <div class="modal-section-title">📋 Setlist</div>
-      <div class="tip-item">
-        <div class="tip-title red">📝 曲ごとのBPM・拍子・グルーブをまとめて登録</div>
-        <div class="tip-desc">画面下（PCでは右側）の練習メニューからステージを選ぶと、問題がスロットに読み込まれます。スロットをタップすると譜面とテンポが一発で切り替わります。</div>
+        <div class="tip-title">テンポは下の問題ほど速くなります</div>
+        <div class="tip-desc">クリア判定は「基準テンポ以上」で叩いたときだけ。スライダーでテンポを落としてゆっくり練習し、慣れたら基準テンポに戻して挑戦しましょう。BPMの数字をダブルタップすると直接入力できます。</div>
       </div>
       <div class="tip-item">
-        <div class="tip-title">設定は自動保存されます</div>
-        <div class="tip-desc">操作するたびに自動でブラウザに保存されます。リロードしても最後の状態が復元されます。スロット数は12〜48曲まで切り替えられます。BPMの数字をダブルクリック（ダブルタップ）すると直接入力できます。</div>
-      </div>
-      <div class="tip-item">
-        <div class="tip-title">💾 セットリストをファイルに書き出せます</div>
-        <div class="tip-desc">「保存」ボタンでJSONファイルに書き出せます。「今月のライブ」「基礎練習メニュー」など用途別に複数のリストを作って使い分けられます。「読み込み」で即座に復元できます。</div>
+        <div class="tip-title">設定とクリア記録は自動保存されます</div>
+        <div class="tip-desc">操作するたびにブラウザへ自動保存され、リロードしても最後の状態と⭐クリア記録が復元されます。</div>
       </div>
     </div>
 
     <div class="modal-section">
-      <div class="modal-section-title">🎸 Tuner</div>
+      <div class="modal-section-title">🗣 タアンツ — リズムの読み上げ</div>
       <div class="tip-item">
-        <div class="tip-title red">🔄 反応が悪い時はリセットボタンをタップ</div>
-        <div class="tip-desc">他のアプリでマイクを使った後など、反応が悪い時は「🔄 反応が悪い時はここをタップ」ボタンで即座に再接続できます。</div>
+        <div class="tip-title red">声のお手本と一緒にリズムを読めます</div>
+        <div class="tip-desc">「タアンツ」をオンにすると、タ＝音符・ア＝のばし・ン＝休符 の声がリズムに合わせて流れます。声に合わせて自分でも口に出すのが上達の近道です。「刻み（タアアア）」と「伸ばし（ターーー）」の2つの読み方を切り替えられます。</div>
       </div>
       <div class="tip-item">
-        <div class="tip-title">カポタストや半音下げにも対応しています</div>
-        <div class="tip-desc">カポを付けている場合はカポフレットを選択、半音下げチューニングなら「半音下げ」ボタンをオンにすると正確な音名で表示されます。</div>
+        <div class="tip-title">読み上げ中のクリック音を選べます</div>
+        <div class="tip-desc">タアンツON中は「クリック：パターン／拍のみ／なし」を選べます。「拍のみ」にすると、足で拍を踏む代わりにクリックが拍を鳴らし、声がリズムを担当します。</div>
+      </div>
+    </div>
+
+    <div class="modal-section">
+      <div class="modal-section-title">🎛 その他の機能</div>
+      <div class="tip-item">
+        <div class="tip-title">♫ Score でリズム譜＋ピッキング記号</div>
+        <div class="tip-desc">「♫ Score」をオンにすると五線譜の下にスラッシュのリズム譜が出ます。さらに「Pick」をオンにすると、ダウン⬓・アップⅤのピッキング記号が音符の上に表示されます（Scoreをオンにしてから使ってください）。</div>
       </div>
       <div class="tip-item">
-        <div class="tip-title">🪗 ウクレレにも対応しています</div>
-        <div class="tip-desc">「Guitar / Uke」切替ボタンでウクレレの標準チューニング（GCEA）表示に切り替わります。</div>
+        <div class="tip-title">🥁 拍ガイドで頭を見失わない</div>
+        <div class="tip-desc">「拍ガイド」をオンにすると、拍の頭（1・2・3・4）に別音色のクリックが重なります。裏拍だけのパターンなど、小節の頭が分かりにくいリズムの強い味方です。</div>
       </div>
       <div class="tip-item">
-        <div class="tip-title">💡 チューニングのコツ</div>
-        <div class="tip-desc">1秒おきにピッキングするとチューニングが合わせやすくなります。弾きっぱなしより、リズムよく弾き直す方が正確に反応します。</div>
+        <div class="tip-title">METRO で普通に鳴らして確認</div>
+        <div class="tip-desc">ゲームではなくリズムをただ聴きたいときは「METRO」で再生できます。タアンツや拍ガイドとの併用もOKです。</div>
       </div>
     </div>
 
@@ -2184,12 +2181,6 @@
     <div class="card" id="metro-card">
 
       <div class="metro-main-col">
-      <div class="bpm-display">
-        <div class="bpm-number" id="bpm-display">120</div>
-        <input type="number" id="bpm-direct-input" min="30" max="240" style="display:none;">
-        <div class="bpm-label">BPM</div>
-      </div>
-
       <!-- 現在地バー：今のステージ・問題を常に表示、◀▶で前後の問題へ -->
       <div id="now-bar">
         <button class="now-nav-btn" id="now-prev" onclick="gotoAdjacentSlot(-1)" title="前の問題">◀</button>
@@ -2226,11 +2217,12 @@
             style="padding:3px 10px; font-size:0.8rem; border:1px solid #ccd0da; border-radius:6px; background:#fff; cursor:pointer; margin-left:4px;" title="「早い」と出がちなとき">遅め ＋</button>
         </div>
       </div>
-      <div id="beat-tap-hint" style="text-align:center; font-size:0.71rem; color:#c0c4cc;
-           letter-spacing:0.04em; margin-top:5px; margin-bottom:2px;
-           transition:opacity 1s ease; opacity:1;">👆 ドットタップでON/OFF &nbsp;·&nbsp; スライドでBPM変更</div>
-      <div id="slider-hint" style="display:none;"></div>
-      <div class="live-bpm-row" style="margin-bottom:12px;">
+      <div class="live-bpm-row" style="margin-top:8px; margin-bottom:10px;">
+        <div class="bpm-inline" title="数字をダブルクリック（ダブルタップ）で直接入力">
+          <span class="bpm-number" id="bpm-display">120</span>
+          <input type="number" id="bpm-direct-input" min="30" max="240" style="display:none;">
+          <span class="bpm-label">BPM</span>
+        </div>
         <button class="live-fine-btn"
           onmousedown="startBpmHold(-1)" onmouseup="stopBpmHold()" onmouseleave="stopBpmHold()"
           ontouchstart="startBpmHold(-1);event.preventDefault()" ontouchend="stopBpmHold()">−</button>
@@ -2272,18 +2264,6 @@
            onmouseup="this.style.transform='';this.style.boxShadow='0 2px 0 #b8bcc8'"
            ontouchstart="this.style.transform='translateY(2px)';this.style.boxShadow='0 0px 0 #b8bcc8'"
            ontouchend="this.style.transform='';this.style.boxShadow='0 2px 0 #b8bcc8'">All Accent</button>
-        <button id="pick-btn" onclick="setShowPick(!showPick)" style="
-          flex:1; padding:7px 6px;
-          border:1.5px solid #c8ccd6; border-radius:8px;
-          background:linear-gradient(to bottom,#f7f8fa,#e0e3ea);
-          box-shadow:0 2px 0 #b8bcc8;
-          font-family:'Barlow Semi Condensed',sans-serif; font-size:0.85rem; font-weight:600; color:#555; cursor:pointer;
-          letter-spacing:0.03em; white-space:nowrap;
-          transition:box-shadow 0.1s,transform 0.1s,background 0.15s,color 0.15s;
-        " onmousedown="this.style.transform='translateY(2px)';this.style.boxShadow='0 0px 0 #b8bcc8'"
-           onmouseup="this.style.transform='';this.style.boxShadow='0 2px 0 #b8bcc8'"
-           ontouchstart="this.style.transform='translateY(2px)';this.style.boxShadow='0 0px 0 #b8bcc8'"
-           ontouchend="this.style.transform='';this.style.boxShadow='0 2px 0 #b8bcc8'"><svg width="11" height="9" viewBox="0 0 12 10" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round" style="vertical-align:middle;margin-right:4px"><polyline points="1,10 1,1 11,1 11,10"/></svg><svg width="11" height="9" viewBox="0 0 12 10" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round" style="vertical-align:middle;margin-right:4px"><polyline points="1,1 6,9 11,1"/></svg>Pick</button>
         <button id="score-btn" onclick="setShowScore(!showScore)" style="
           flex:1; padding:7px 6px;
           border:1.5px solid #c8ccd6; border-radius:8px;
@@ -2296,6 +2276,18 @@
            onmouseup="this.style.transform='';this.style.boxShadow='0 2px 0 #b8bcc8'"
            ontouchstart="this.style.transform='translateY(2px)';this.style.boxShadow='0 0px 0 #b8bcc8'"
            ontouchend="this.style.transform='';this.style.boxShadow='0 2px 0 #b8bcc8'">♫ Score</button>
+        <button id="pick-btn" onclick="setShowPick(!showPick)" style="
+          flex:1; padding:7px 6px;
+          border:1.5px solid #c8ccd6; border-radius:8px;
+          background:linear-gradient(to bottom,#f7f8fa,#e0e3ea);
+          box-shadow:0 2px 0 #b8bcc8;
+          font-family:'Barlow Semi Condensed',sans-serif; font-size:0.85rem; font-weight:600; color:#555; cursor:pointer;
+          letter-spacing:0.03em; white-space:nowrap;
+          transition:box-shadow 0.1s,transform 0.1s,background 0.15s,color 0.15s;
+        " onmousedown="this.style.transform='translateY(2px)';this.style.boxShadow='0 0px 0 #b8bcc8'"
+           onmouseup="this.style.transform='';this.style.boxShadow='0 2px 0 #b8bcc8'"
+           ontouchstart="this.style.transform='translateY(2px)';this.style.boxShadow='0 0px 0 #b8bcc8'"
+           ontouchend="this.style.transform='';this.style.boxShadow='0 2px 0 #b8bcc8'"><svg width="11" height="9" viewBox="0 0 12 10" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round" style="vertical-align:middle;margin-right:4px"><polyline points="1,10 1,1 11,1 11,10"/></svg><svg width="11" height="9" viewBox="0 0 12 10" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round" style="vertical-align:middle;margin-right:4px"><polyline points="1,1 6,9 11,1"/></svg>Pick</button>
         <button id="readout-btn" onclick="setReadout(!readoutOn)" style="
           flex:1; padding:7px 6px;
           border:1.5px solid #c8ccd6; border-radius:8px;
@@ -2348,15 +2340,12 @@
       <!-- 練習メニュー（常時表示・トグル廃止） -->
       <div id="metro-setlist-panel" style="margin-top:12px;">
         <div class="menu-heading">
-          <span class="menu-heading-icon">🎵</span>
-          <div>
-            <div class="menu-heading-title">PRACTICE MENU</div>
-            <div class="menu-heading-sub">練習メニューはここから選ぼう — 全ステージ制覇を目指せ！</div>
-          </div>
+          <div class="menu-heading-title">PRACTICE MENU</div>
+          <div class="menu-heading-sub">練習メニューはここから選ぼう</div>
         </div>
         <!-- ステージを選ぶ（主役の入口・最上部） -->
         <div style="margin-bottom:14px;">
-          <div class="live-slots-label" style="margin-top:0; margin-bottom:8px;">🎯 ステージを選ぶ</div>
+          <div class="live-slots-label" style="margin-top:0; margin-bottom:8px;">🎯 ステージ（難易度）を選ぶ</div>
           <select id="rhythm-category-select" onchange="loadRhythmCategory(this.value)"
             style="width:100%; padding:9px 12px; border:1.5px solid #dde0e8; border-radius:7px;
                    font-size:0.88rem; color:#222; background:#f7f8fa; outline:none; cursor:pointer;">
@@ -2398,16 +2387,6 @@
                    color:#c0392b;font-size:0.78rem;font-weight:700;cursor:pointer;line-height:1.3;">🗑</button>
         </div>
         <div class="live-slots" id="metro-slots"></div>
-        <div style="margin-bottom:10px;">
-          <input type="text" class="live-name-input" id="metro-slot-name"
-            placeholder="曲名を入力（任意）" maxlength="20"
-            oninput="updateMetroSlotName(this.value)"
-            style="width:100%;box-sizing:border-box;margin-bottom:0;">
-          <div style="display:flex;align-items:center;justify-content:space-between;margin-top:4px;">
-            <p style="margin:0; font-size:0.68rem; color:#777; letter-spacing:0.02em;">PC/iPad：ダブルクリックで曲名入力 ／ ドラッグで曲順を入れ替え</p>
-            <button onclick="clearSelectedMetroSlot()" style="flex-shrink:0;margin-left:8px;padding:3px 10px;font-size:0.72rem;color:#c0392b;background:#fff5f5;border:1px solid #e0a0a0;border-radius:4px;cursor:pointer;white-space:nowrap;font-weight:600;" title="選択中のスロットを初期状態に戻す">選択中スロットをリセット</button>
-          </div>
-        </div>
         <!-- 共有・ファイル保存/読込（先生向け・現在は非表示。将来復活予定） -->
         <div style="display:none;">
           <button onclick="openShareModal()" style="width:100%; margin-top:8px; padding:11px;
