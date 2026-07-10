@@ -180,35 +180,37 @@
   }
 
   /* ===== METRONOME ===== */
+  /* BPM表示: メトロノームではないので控えめなピル型（数字＋BPMを横並び） */
   .bpm-display {
-    text-align: center;
-    margin-bottom: 16px;
-    margin-top: 0;
+    display: flex;
+    align-items: baseline;
+    justify-content: center;
+    gap: 7px;
+    margin: 0 auto 10px;
+    max-width: 180px;
     background: linear-gradient(160deg, #1a3a52, #0e2536);
-    border-radius: 14px;
-    padding: 14px 20px 10px;
+    border-radius: 10px;
+    padding: 6px 16px 5px;
     border: 1px solid rgba(255,255,255,0.06);
-    box-shadow: inset 0 2px 10px rgba(0,0,0,0.3), inset 0 -1px 0 rgba(255,255,255,0.04);
+    box-shadow: inset 0 2px 8px rgba(0,0,0,0.3), inset 0 -1px 0 rgba(255,255,255,0.04);
     transition: box-shadow 0.5s ease;
   }
 
   .bpm-number {
     font-family: 'Oswald', sans-serif;
-    font-size: 5rem;
+    font-size: 1.8rem;
     font-weight: 700;
     color: #eef0ff;
     line-height: 1;
     letter-spacing: 0.02em;
-    text-shadow: 0 0 30px rgba(150,170,255,0.15);
     transition: color 0.5s ease, text-shadow 0.5s ease;
   }
 
   .bpm-label {
-    font-size: 0.75rem;
-    color: rgba(200,210,230,0.4);
+    font-size: 0.62rem;
+    color: rgba(200,210,230,0.45);
     letter-spacing: 0.2em;
     text-transform: uppercase;
-    margin-top: 2px;
   }
 
   /* C: 起動中グロー */
@@ -489,11 +491,11 @@
   .train-label {
     display: block;
     font-family: 'Oswald', sans-serif;
-    font-size: 0.86rem;
+    font-size: 1.05rem;
     font-weight: 600;
-    line-height: 1.06;
-    letter-spacing: 0.12em;
-    text-indent: 0.12em;
+    line-height: 1.1;
+    letter-spacing: 0.14em;
+    text-indent: 0.14em;
   }
   .btn-train.tapmode-active {
     background: linear-gradient(to bottom, #1e7d4a, #17603a);
@@ -1075,14 +1077,14 @@
   /* BPM直接入力（ダブルクリックで表示） */
   #bpm-direct-input {
     font-family: 'Oswald', sans-serif;
-    font-size: 5rem;
+    font-size: 1.8rem;
     font-weight: 700;
     color: #eef0ff;
     background: transparent;
     border: none;
     border-bottom: 2px solid rgba(255,255,255,0.4);
     text-align: center;
-    width: 220px;
+    width: 84px;
     outline: none;
     line-height: 1;
     padding: 0;
@@ -1198,6 +1200,36 @@
   .score-slot.tap-perfect { color: #27ae60 !important; }
   .score-slot.tap-good    { color: #e67e22 !important; }
   .score-slot.tap-miss    { color: #c0392b !important; }
+
+  /* 練習メニューの見出し（トグル廃止・常時表示） */
+  .menu-heading {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 14px;
+    margin-bottom: 12px;
+    background: linear-gradient(120deg, #2176ae, #14547f);
+    border-radius: 10px;
+    box-shadow: 0 2px 8px rgba(20,84,127,0.25);
+  }
+  .menu-heading-icon { font-size: 1.3rem; }
+  .menu-heading-title {
+    font-family: 'Oswald', sans-serif;
+    font-size: 1.02rem;
+    font-weight: 600;
+    color: #fff;
+    letter-spacing: 0.14em;
+    line-height: 1.1;
+  }
+  .menu-heading-sub {
+    font-size: 0.68rem;
+    color: rgba(255,255,255,0.75);
+    letter-spacing: 0.03em;
+    margin-top: 2px;
+  }
+
+  /* Optionsは3列グリッドで折り返す（スマホでのはみ出し防止・5個目の拍ガイドも収まる） */
+  #options-row > button { flex: 1 1 30% !important; min-width: 0; }
 
   #all-accent-btn.all-accent-active,
   #pick-btn.pick-active,
@@ -1866,7 +1898,6 @@
 
   /* ===== RESPONSIVE ===== */
   @media (max-width: 400px) {
-    .bpm-number { font-size: 4.5rem; }
     .tuner-note { font-size: 4rem; }
     .tab-btn { padding: 9px 20px; font-size: 0.85rem; }
     .card { padding: 22px 16px; }
@@ -2090,7 +2121,7 @@
       <div class="modal-section-title">📋 Setlist</div>
       <div class="tip-item">
         <div class="tip-title red">📝 曲ごとのBPM・拍子・グルーブをまとめて登録</div>
-        <div class="tip-desc">「Setlist」トグルを開くとスロットが表示されます。BPM・拍子・サブディビジョン・音色をセットで保存でき、タップ一発で全設定を呼び出せます。ライブのセットリストや練習メニュー管理に最適です。</div>
+        <div class="tip-desc">画面下（PCでは右側）の練習メニューからステージを選ぶと、問題がスロットに読み込まれます。スロットをタップすると譜面とテンポが一発で切り替わります。</div>
       </div>
       <div class="tip-item">
         <div class="tip-title">設定は自動保存されます</div>
@@ -2180,7 +2211,7 @@
         <div class="tap-verdict" id="tap-verdict">👆</div>
         <div class="tap-meter" id="tap-meter"><div class="tap-meter-center"></div></div>
         <div class="tap-meter-labels"><span>◀ 早い</span><span>ジャスト</span><span>遅い ▶</span></div>
-        <div class="tap-hint" id="tap-hint">STARTを押すと1小節のカウントの後に始まります。音符のタイミングでここをタップ！（PC: スペースキー）</div>
+        <div class="tap-hint" id="tap-hint">ここをタップすると1小節のカウントの後に始まります。音符のタイミングでタップ！（PC: スペースキー）</div>
         <div style="margin-top:10px;">
           <button id="tap-calib-btn" onpointerdown="event.stopPropagation()" onclick="toggleCalibration(event)"
             style="padding:4px 12px; font-size:0.75rem; color:#666; background:#fff;
@@ -2212,9 +2243,8 @@
 
 
       <div class="btn-row" style="margin-bottom:6px;">
-        <button class="btn btn-primary" id="start-btn" onclick="toggleMetronome()">START</button>
-        <button class="btn btn-train" id="tapmode-btn" onclick="setTapMode(!tapModeOn)"><span class="train-label">RHYTHM<br>TRAINER</span></button>
-        <button class="btn btn-mute" id="mute-btn" onclick="toggleMute()" style="flex:0.55;">MUTE</button>
+        <button class="btn btn-train" id="tapmode-btn" onclick="setTapMode(!tapModeOn)" style="flex:1.6;"><span class="train-label">RHYTHM<br>TRAINER</span></button>
+        <button class="btn btn-primary" id="start-btn" onclick="toggleMetronome()">METRO</button>
       </div>
 
       <div class="section-label">Sound</div>
@@ -2229,7 +2259,7 @@
 
       <div class="section-label">Options</div>
       <div class="beat-row">
-        <div style="display:flex;gap:8px;flex:1;">
+        <div id="options-row" style="display:flex;gap:8px;flex:1;flex-wrap:wrap;">
         <button id="all-accent-btn" onclick="setAllAccent(!allAccent)" style="
           flex:1; padding:7px 6px;
           border:1.5px solid #c8ccd6; border-radius:8px;
@@ -2278,12 +2308,8 @@
            onmouseup="this.style.transform='';this.style.boxShadow='0 2px 0 #b8bcc8'"
            ontouchstart="this.style.transform='translateY(2px)';this.style.boxShadow='0 0px 0 #b8bcc8'"
            ontouchend="this.style.transform='';this.style.boxShadow='0 2px 0 #b8bcc8'">🗣 タアンツ</button>
-        </div>
-      </div>
-
-      <!-- 拍カウント（1・2・3・4）: 再生に拍のクリックを重ねる補助 -->
-      <div class="beat-row" style="margin-top:6px;">
-        <button id="beatclick-btn" onclick="setBeatClick(!beatClickOn)" style="
+        <button id="beatclick-btn" onclick="setBeatClick(!beatClickOn)"
+           title="拍の頭（1・2・3・4）にガイドクリックを重ねます。頭抜きのリズムでも拍が見失いません" style="
           flex:1; padding:7px 6px;
           border:1.5px solid #c8ccd6; border-radius:8px;
           background:linear-gradient(to bottom,#f7f8fa,#e0e3ea);
@@ -2294,7 +2320,8 @@
         " onmousedown="this.style.transform='translateY(2px)';this.style.boxShadow='0 0px 0 #b8bcc8'"
            onmouseup="this.style.transform='';this.style.boxShadow='0 2px 0 #b8bcc8'"
            ontouchstart="this.style.transform='translateY(2px)';this.style.boxShadow='0 0px 0 #b8bcc8'"
-           ontouchend="this.style.transform='';this.style.boxShadow='0 2px 0 #b8bcc8'">🥁 拍カウント（1・2・3・4）</button>
+           ontouchend="this.style.transform='';this.style.boxShadow='0 2px 0 #b8bcc8'">🥁 拍ガイド</button>
+        </div>
       </div>
 
       <!-- 読み上げモード切替（タツンON時のみ表示） -->
@@ -2316,18 +2343,17 @@
       </div>
 
 
-      <!-- Metro Setlist (折りたたみ) -->
-      <button class="setlist-toggle" id="metro-setlist-toggle" onclick="toggleMetroSetlist()">
-        <div class="setlist-toggle-left">
-          <span class="setlist-toggle-icon">🎵</span>
-          <span class="setlist-toggle-label">練習メニュー</span>
-          <span class="setlist-toggle-sub">カテゴリからパターンを読み込もう</span>
-        </div>
-        <span class="setlist-toggle-arrow">▼</span>
-      </button>
       </div><!-- /.metro-main-col -->
 
-      <div id="metro-setlist-panel" style="display:none; margin-top:12px;">
+      <!-- 練習メニュー（常時表示・トグル廃止） -->
+      <div id="metro-setlist-panel" style="margin-top:12px;">
+        <div class="menu-heading">
+          <span class="menu-heading-icon">🎵</span>
+          <div>
+            <div class="menu-heading-title">PRACTICE MENU</div>
+            <div class="menu-heading-sub">練習メニューはここから選ぼう — 全ステージ制覇を目指せ！</div>
+          </div>
+        </div>
         <!-- ステージを選ぶ（主役の入口・最上部） -->
         <div style="margin-bottom:14px;">
           <div class="live-slots-label" style="margin-top:0; margin-bottom:8px;">🎯 ステージを選ぶ</div>
@@ -3035,7 +3061,10 @@ function resetMetroSetlist() {
   renderMetroSlots();
 }
 
+// トグルUIは廃止（練習メニューは常時表示）。互換のため関数は残すが何もしない
 function toggleMetroSetlist() {
+  return;
+  /* 旧実装 */
   const panel = document.getElementById('metro-setlist-panel');
   const btn   = document.getElementById('metro-setlist-toggle');
   metroSetlistOpen = !metroSetlistOpen;
@@ -4538,7 +4567,7 @@ function resetTapSession() {
   const h = document.getElementById('tap-hint');
   if (v) { v.textContent = '👆'; v.className = 'tap-verdict'; }
   if (s) s.textContent = '';
-  if (h) h.textContent = 'STARTを押すと1小節のカウントの後に始まります。音符のタイミングでここをタップ！（PC: スペースキー）';
+  if (h) h.textContent = 'ここをタップすると1小節のカウントの後に始まります。音符のタイミングでタップ！（PC: スペースキー）';
 }
 
 function clearTapNoteColors() {
@@ -4887,10 +4916,10 @@ function toggleMetronome() {
     tapTargets = [];
     if (tapModeOn) {
       const h = document.getElementById('tap-hint');
-      if (h) h.textContent = 'タップ（またはSTART）でもう一度';
+      if (h) h.textContent = 'タップでもう一度スタート';
     }
     updateWakeLock();
-    btn.textContent = 'START';
+    btn.textContent = 'METRO';
     btn.classList.remove('running');
     if (card) card.classList.remove('metro-running');
     document.querySelectorAll('.beat-dot').forEach(d => d.classList.remove('active'));
