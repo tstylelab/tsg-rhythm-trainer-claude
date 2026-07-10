@@ -1100,6 +1100,66 @@
     pointer-events: none;
   }
 
+  /* ===== はじめてカード（ステージ未選択時の入口） ===== */
+  #start-card {
+    display: none;
+    text-align: center;
+    margin: 14px 0;
+    padding: 26px 16px;
+    background: linear-gradient(135deg, #eaf6ef, #d8efe2);
+    border: 2px solid #34b56f;
+    border-radius: 14px;
+    cursor: pointer;
+    user-select: none;
+    transition: transform 0.1s;
+  }
+  #start-card:active { transform: scale(0.98); }
+  .start-card-main {
+    font-size: 1.0rem;
+    font-weight: 700;
+    color: #1a6b40;
+    margin-bottom: 14px;
+    line-height: 1.5;
+  }
+  .start-card-btn {
+    display: inline-block;
+    padding: 13px 30px;
+    background: linear-gradient(to bottom, #34b56f, #26965a);
+    color: #fff;
+    font-size: 1.05rem;
+    font-weight: 700;
+    border-radius: 10px;
+    box-shadow: 0 3px 0 #1a6b40, 0 2px 8px rgba(0,0,0,0.15);
+    letter-spacing: 0.05em;
+  }
+  .start-card-sub {
+    margin-top: 10px;
+    font-size: 0.7rem;
+    color: #4a8a65;
+  }
+
+  /* 未プレイ時のRHYTHM TRAINERボタン誘目パルス */
+  @keyframes trainPulse {
+    0%, 100% { box-shadow: 0 3px 0 #1a6b40, 0 0 0 0 rgba(52,181,111,0.5); }
+    50%      { box-shadow: 0 3px 0 #1a6b40, 0 0 0 9px rgba(52,181,111,0); }
+  }
+  #tapmode-btn.attract { animation: trainPulse 1.7s ease-out infinite; }
+
+  /* クリア時の紙吹雪（CSSのみ・軽量） */
+  .confetti {
+    position: fixed;
+    top: -14px;
+    width: 8px;
+    height: 13px;
+    z-index: 3000;
+    pointer-events: none;
+    border-radius: 2px;
+    animation: confettiFall linear forwards;
+  }
+  @keyframes confettiFall {
+    to { transform: translateY(105vh) rotate(720deg); opacity: 0.85; }
+  }
+
   /* ===== 現在地バー（今のステージ・問題を常設表示） ===== */
   #now-bar {
     display: none; align-items: center; gap: 8px;
@@ -2154,6 +2214,23 @@
 </div>
 
 
+<!-- 初回のみの「遊びかた」オーバーレイ -->
+<div class="modal-overlay" id="onboard-modal">
+  <div class="modal-box" style="max-width:340px; text-align:center;">
+    <button class="modal-close" onclick="closeOnboard(false)">×</button>
+    <div class="modal-title" style="justify-content:center;">🎮 リズムトレーナーへようこそ！</div>
+    <div style="text-align:left; font-size:0.9rem; line-height:1.7; margin:14px 4px 18px;">
+      <div style="margin-bottom:10px;">👀 <b>① リズム譜を見る</b><br><span style="font-size:0.8rem;color:#666;">音符の並びがそのまま問題です</span></div>
+      <div style="margin-bottom:10px;">👆 <b>② タイミングよくタップ</b><br><span style="font-size:0.8rem;color:#666;">カウントのあと、音符のタイミングでパッドを叩こう</span></div>
+      <div>⭐ <b>③ 4小節ノーミスでクリア！</b><br><span style="font-size:0.8rem;color:#666;">全ステージ制覇を目指そう</span></div>
+    </div>
+    <button onclick="closeOnboard(true)"
+      style="width:100%; padding:13px; background:linear-gradient(to bottom,#34b56f,#26965a); color:#fff;
+             border:none; border-radius:10px; font-size:1rem; font-weight:700; cursor:pointer;
+             box-shadow:0 3px 0 #1a6b40;">▶ さっそくはじめる</button>
+  </div>
+</div>
+
 <div class="modal-overlay" id="share-modal" onclick="if(event.target===this)closeShareModal()">
   <div class="modal-box" style="max-width:360px; text-align:center;">
     <button class="modal-close" onclick="closeShareModal()">×</button>
@@ -2189,6 +2266,13 @@
           <div class="now-bar-slot" id="now-bar-slot">—</div>
         </div>
         <button class="now-nav-btn" id="now-next" onclick="gotoAdjacentSlot(1)" title="次の問題">▶</button>
+      </div>
+
+      <!-- はじめてカード（ステージ未選択のときだけ表示・1タップでゲーム開始） -->
+      <div id="start-card" onclick="startFirstPlay()">
+        <div class="start-card-main">🎵 リズム譜を見て、タイミングよくタップ！<br>4小節ノーミスでクリアのリズムゲーム</div>
+        <div class="start-card-btn">▶ ステージ1からはじめる</div>
+        <div class="start-card-sub">慣れてきたら下の練習メニューから好きなステージを選べます</div>
       </div>
 
       <div class="beat-indicators" id="beat-indicators"></div>
@@ -3396,6 +3480,7 @@ function setReadout(val) {
   const clickRow = document.getElementById('readout-click-row');
   if (clickRow) clickRow.style.display = readoutOn ? '' : 'none';
   if (readoutOn && !readoutLoaded) loadReadoutBuffers(); // 再生開始前に先読み
+  if (showScore) renderScoreView(); // Score下のカタカナ表示を切り替え
 }
 
 function setBeatClick(val) {
@@ -3520,9 +3605,11 @@ function renderScoreView() {
 
   const W = 400;
   const pickPad = showPick ? 18 : 0;
-  const H       = 90 + pickPad;
+  const kanaPad = readoutOn ? 18 : 0; // タアンツON時は読み方カタカナの行を下に確保
+  const H       = 90 + pickPad + kanaPad;
   const staffTop = 16 + pickPad, lineGap = 8;
   const noteY    = staffTop + 2 * lineGap;
+  const kanaY    = noteY + 32;
   const stemH    = Math.round(lineGap * 3.5);
   const stemTop  = noteY - stemH;
   const pickSymH = 11, pickSymHW = 6;
@@ -3725,6 +3812,19 @@ function renderScoreView() {
         }
         svg += '</g>';
       });
+
+      // タアンツON時: 読み方カタカナをスラッシュ譜の下に表示（伸ばしは「ー」）。
+      // 表示密度が低い行（四分のみ等）でも読みが欠けないよう、グローバル細分を基準に等間隔で置く
+      if (readoutOn) {
+        const KN = { hit: 'タ', sustain: 'ー', rest: 'ン', brush: 'ツ' };
+        const gBase2 = b * (1 + globalSubs);
+        const beatLeft = xs[g0] - step / 2;
+        const gw = (unitCount * step) / (globalSubs + 1);
+        for (let j = 0; j <= globalSubs; j++) {
+          const ty = table[gBase2 + j];
+          svg += `<text x="${(beatLeft + (j + 0.5) * gw).toFixed(1)}" y="${kanaY}" text-anchor="middle" font-size="11.5" font-weight="700" fill="#3f5a75" font-family="system-ui,sans-serif">${KN[ty] || ''}</text>`;
+        }
+      }
     }
 
     rowSlots.forEach((slot, i) => {
@@ -4335,6 +4435,84 @@ function gotoAdjacentSlot(dir) {
   if (wasRunning && tapModeOn) toggleMetronome();
 }
 
+// ===== はじめて導線 =====
+// ステージ未選択のときだけ「はじめる」カードを表示
+function updateStartCard() {
+  const card = document.getElementById('start-card');
+  if (card) card.style.display = _currentCategoryKey ? 'none' : 'block';
+}
+
+// 1タップでステージ1＋トレーニング開始
+function startFirstPlay() {
+  loadRhythmCategory('stage1');
+  updateStartCard();
+  if (!tapModeOn) setTapMode(true);
+  if (!metronomeRunning) toggleMetronome();
+}
+
+// 初回のみの遊びかたオーバーレイ
+function closeOnboard(start) {
+  const m = document.getElementById('onboard-modal');
+  if (m) m.classList.remove('open');
+  lsSet('tsg-rhythm-onboarded', '1');
+  if (start) startFirstPlay();
+}
+
+// クリア時の紙吹雪（CSSのみ・軽量）
+function throwConfetti(n) {
+  const colors = ['#f94144','#f8961e','#f9c74f','#90be6d','#43aa8b','#577590','#b5179e'];
+  for (let i = 0; i < (n || 26); i++) {
+    const el = document.createElement('div');
+    el.className = 'confetti';
+    el.style.left = (5 + Math.random() * 90) + 'vw';
+    el.style.background = colors[i % colors.length];
+    el.style.animationDelay = (Math.random() * 0.3) + 's';
+    el.style.animationDuration = (1.1 + Math.random() * 0.9) + 's';
+    el.style.transform = `rotate(${Math.round(Math.random() * 360)}deg)`;
+    document.body.appendChild(el);
+    setTimeout(() => el.remove(), 2600);
+  }
+}
+
+// ===== パターン検収モード（?check=1）=====
+// 全ステージ・全問題の譜面＋読み方＋テンポを1ページに一覧表示（制作チェック用）
+function renderCheckMode() {
+  const KANA = { hit: 'タ', sustain: 'ア', rest: 'ン', brush: 'ツ' };
+  const wrap = document.createElement('div');
+  wrap.style.cssText = 'position:fixed;inset:0;background:#fff;z-index:5000;overflow:auto;padding:18px;font-family:system-ui,sans-serif;';
+  wrap.innerHTML = '<h2 style="font-size:1.05rem;margin-bottom:4px;">🔍 パターン検収モード</h2>'
+    + '<p style="font-size:0.75rem;color:#777;margin-bottom:10px;">?check=1 を外すと通常表示に戻ります</p>';
+  document.body.appendChild(wrap); // 先にDOMへ（abcjsの描画にはDOM上の要素が必要）
+  Object.keys(RHYTHM_CATEGORIES).forEach(key => {
+    const cat = RHYTHM_CATEGORIES[key];
+    if (!cat || !cat.length) return;
+    const h = document.createElement('h3');
+    h.textContent = key;
+    h.style.cssText = 'margin:20px 0 8px;font-size:0.95rem;color:#14547f;border-bottom:2px solid #2176ae;padding-bottom:3px;';
+    wrap.appendChild(h);
+    cat.forEach((p, i) => {
+      const spb = (p.groove === 'sixteenth') ? 4 : 2;
+      const types = parseAbcToSlotTypes(p.abc, p.beats * spb, spb / 2) || [];
+      const yomi = types.map(t => KANA[t] || '?').join('');
+      const row = document.createElement('div');
+      row.style.cssText = 'margin-bottom:12px;padding:8px 10px;border:1px solid #e0e4ea;border-radius:8px;';
+      const meta = document.createElement('div');
+      meta.style.cssText = 'font-size:0.8rem;font-weight:700;color:#333;';
+      meta.textContent = `${i + 1}. ${p.name}｜BPM ${p.bpm}｜${yomi}`;
+      const abcDiv = document.createElement('div');
+      abcDiv.id = `check-${key}-${i}`;
+      row.appendChild(meta);
+      row.appendChild(abcDiv);
+      wrap.appendChild(row);
+      try {
+        ABCJS.renderAbc(abcDiv,
+          `X:1\nM:4/4\nL:1/8\n%%stafflines 1\nK:perc\n${p.abc}|`,
+          { staffwidth: 640, add_classes: false, paddingtop: 4, paddingbottom: 4, paddingleft: 10, paddingright: 10 });
+      } catch (e) {}
+    });
+  });
+}
+
 // カテゴリ選択のラベルにクリア進捗（n/12・👑）を表示
 function updateCategoryProgress() {
   const sel = document.getElementById('rhythm-category-select');
@@ -4372,9 +4550,11 @@ function markSlotCleared(i) {
   updateCategoryProgress();
   updateNowBar();
   playEffect('clear');
+  throwConfetti(26);
   if (isStageAllCleared()) {
     setTimeout(() => {
       playEffect('stageclear');
+      throwConfetti(60); // 全クリアは盛大に
       showToast('🏆 ステージ全クリア！おめでとうございます！');
       if (metronomeRunning) toggleMetronome(); // 全クリアで締め
     }, 1200);
@@ -4529,7 +4709,14 @@ function setTapMode(val) {
   if (!tapModeOn && calibOn) endCalibration(false);
   if (!tapModeOn && metronomeRunning) toggleMetronome();
   resetTapSession();
-  if (tapModeOn) { updateCalibInfo(); loadEffectBuffers(); }
+  if (tapModeOn) {
+    updateCalibInfo();
+    loadEffectBuffers();
+    // 初プレイ記録：誘目パルスを止める
+    lsSet('tsg-rhythm-played', '1');
+    const tb = document.getElementById('tapmode-btn');
+    if (tb) tb.classList.remove('attract');
+  }
 }
 
 function resetTapSession() {
@@ -5817,6 +6004,7 @@ function loadRhythmCategory(categoryKey) {
   selectMetroSlot(0);
   updateCategoryProgress();
   updateNowBar();
+  updateStartCard();
 }
 
 let _currentCategoryKey = '';
@@ -6120,6 +6308,24 @@ if (localStorage.getItem('tsg-rhythm-showScore') === '1') {
 // カテゴリ選択にクリア進捗を表示・現在地バー初期化
 updateCategoryProgress();
 updateNowBar();
+updateStartCard();
+
+// はじめて導線: 未プレイならRHYTHM TRAINERボタンを誘目パルス
+if (!localStorage.getItem('tsg-rhythm-played')) {
+  const _tb = document.getElementById('tapmode-btn');
+  if (_tb) _tb.classList.add('attract');
+}
+// 初回のみ遊びかたオーバーレイ
+if (!localStorage.getItem('tsg-rhythm-onboarded')) {
+  const _om = document.getElementById('onboard-modal');
+  if (_om) _om.classList.add('open');
+}
+// パターン検収モード（?check=1、abcjs読み込み後に起動）
+if (location.search.includes('check=1')) {
+  window.addEventListener('load', () => {
+    if (typeof ABCJS !== 'undefined') renderCheckMode();
+  });
+}
 
 // 拍カウントの状態を復元
 if (localStorage.getItem('tsg-rhythm-beatclick') === '1') setBeatClick(true);
