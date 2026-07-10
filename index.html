@@ -2185,7 +2185,7 @@
       </div>
       <div class="tip-item">
         <div class="tip-title">設定とクリア記録は自動保存されます</div>
-        <div class="tip-desc">操作するたびにブラウザへ自動保存され、リロードしても最後の状態と⭐クリア記録が復元されます。</div>
+        <div class="tip-desc">操作するたびにブラウザへ自動保存され、リロードしても最後の状態と⭐クリア記録が復元されます。<b>※ブラウザの閲覧データ（サイトデータ）を削除すると⭐クリア記録も消えます</b>のでご注意ください。</div>
       </div>
     </div>
 
@@ -2297,9 +2297,13 @@
         <div class="tap-meter-labels"><span>◀ 早い</span><span>ジャスト</span><span>遅い ▶</span></div>
         <div class="tap-hint" id="tap-hint">ここをタップすると1小節のカウントの後に始まります。音符のタイミングでタップ！（PC: スペースキー）</div>
         <div style="margin-top:10px;">
+          <button id="tap-demo-btn" onpointerdown="event.stopPropagation()" onclick="playDemo(event)"
+            title="このリズムを1周だけ、読み上げ付きで聴けます"
+            style="padding:4px 12px; font-size:0.75rem; color:#1a6b40; background:#eaf6ef;
+                   border:1px solid #9fd4b5; border-radius:6px; cursor:pointer; font-weight:700;">👂 お手本</button>
           <button id="tap-calib-btn" onpointerdown="event.stopPropagation()" onclick="toggleCalibration(event)"
             style="padding:4px 12px; font-size:0.75rem; color:#666; background:#fff;
-                   border:1px solid #ccd0da; border-radius:6px; cursor:pointer;">⏱ タイミング補正</button>
+                   border:1px solid #ccd0da; border-radius:6px; cursor:pointer; margin-left:6px;">⏱ タイミング補正</button>
           <span id="tap-calib-info" style="font-size:0.72rem; color:#999; margin-left:8px;"></span>
         </div>
         <div style="margin-top:8px; font-size:0.7rem; color:#999;">
@@ -2449,10 +2453,7 @@
             <option value="stage4">ステージ4 のばす音符</option>
             <option value="stage5">ステージ5 タイ（音をつなぐ）</option>
             <option value="stage6">ステージ6 16分音符 入門</option>
-            <option value="8th-basic">8分音符 基本</option>
-            <option value="8th-advanced">8分音符 応用（準備中）</option>
-            <option value="16th-basic">16分音符 基本</option>
-            <option value="xml-test">XMLテスト（8分音符）</option>
+            <!-- 旧カテゴリ(8th-basic等)は選択肢から削除。データは共有URL・保存データ互換のため残置 -->
           </select>
         </div>
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;gap:6px;">
@@ -3162,7 +3163,8 @@ function saveMetroSetlistFile() {
     slotCount: metroSlotCount,
     beatMuted: metroBeatMutedArr,
     subMuted: metroSubMutedArr,
-    categoryKey: _currentCategoryKey
+    categoryKey: _currentCategoryKey,
+    clears: clearedMap // ⭐クリア記録もバックアップに含める
   };
   const json = JSON.stringify(data, null, 2);
   const blob = new Blob([json], { type: 'application/json' });
@@ -3216,6 +3218,12 @@ function loadMetroSetlistFile(event) {
         _currentCategoryKey = '';
         currentCategoryAbcStrings = [];
         if (catSel) catSel.value = '';
+      }
+      // ⭐クリア記録の復元（既存の記録とマージ）
+      if (data.clears && typeof data.clears === 'object') {
+        clearedMap = Object.assign({}, clearedMap, data.clears);
+        lsSet(CLEARS_LS_KEY, JSON.stringify(clearedMap));
+        updateCategoryProgress();
       }
       metroSelectedSlot = 0;
       saveMetroSetlist();
@@ -3823,15 +3831,15 @@ function renderScoreView() {
       });
 
       // タアンツON時: 読み方カタカナをスラッシュ譜の下に表示（伸ばしは「ー」）。
-      // 表示密度が低い行（四分のみ等）でも読みが欠けないよう、グローバル細分を基準に等間隔で置く
+      // 位置は音符の描画位置に合わせる: 表示スロットに一致する細分はその真下、
+      // 表示されない細分（四分のみの行の裏拍など）はその間に置く
       if (readoutOn) {
         const KN = { hit: 'タ', sustain: 'ー', rest: 'ン', brush: 'ツ' };
         const gBase2 = b * (1 + globalSubs);
-        const beatLeft = xs[g0] - step / 2;
-        const gw = (unitCount * step) / (globalSubs + 1);
         for (let j = 0; j <= globalSubs; j++) {
           const ty = table[gBase2 + j];
-          svg += `<text x="${(beatLeft + (j + 0.5) * gw).toFixed(1)}" y="${kanaY}" text-anchor="middle" font-size="11.5" font-weight="700" fill="#3f5a75" font-family="system-ui,sans-serif">${KN[ty] || ''}</text>`;
+          const px = xs[g0] + (j * unitCount / (globalSubs + 1)) * step; // 音符位置と同じ座標系
+          svg += `<text x="${px.toFixed(1)}" y="${kanaY}" text-anchor="middle" font-size="11.5" font-weight="700" fill="#3f5a75" font-family="system-ui,sans-serif">${KN[ty] || ''}</text>`;
         }
       }
     }
@@ -5063,6 +5071,29 @@ document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'visible') updateWakeLock();
 });
 
+// 👂 お手本: このリズムを1周だけ読み上げ（タアンツ）付きで再生して自動停止
+let _demoStopTimer = null;
+let _demoPrevReadout = false;
+let _demoActive = false;
+function playDemo(e) {
+  if (e && e.stopPropagation) e.stopPropagation();
+  if (calibOn) return;
+  if (metronomeRunning) toggleMetronome();
+  if (!readoutLoaded) loadReadoutBuffers();
+  gameActive = false;
+  _demoActive = true;
+  _demoPrevReadout = readoutOn;
+  readoutOn = true; // 一時的に読み上げON（ボタン表示やlocalStorageは変えない）
+  showTapVerdict('', '👂', 'お手本を聴いてみよう（1周で止まります）');
+  toggleMetronome();
+  const loopSec = (60 / bpm) * beats;
+  _demoStopTimer = setTimeout(() => {
+    _demoStopTimer = null;
+    if (metronomeRunning && !gameActive) toggleMetronome();
+    showTapVerdict('', '👆', 'タップして挑戦！');
+  }, (loopSec + 0.35) * 1000);
+}
+
 // METROボタン: ゲームではなく「今のリズムをメトロノームのように鳴らす」確認用の再生
 function startMetroPlain() {
   if (metronomeRunning) { toggleMetronome(); return; } // 再生中は停止として機能
@@ -5106,6 +5137,12 @@ function toggleMetronome() {
     metronomeRunning = false;
     // 鳴りっぱなしの読み上げ音（特に長いター）を止める
     if (_readoutPrev) { try { _readoutPrev.src.stop(); } catch(e) {} _readoutPrev = null; }
+    // お手本再生の後始末（一時的にONにした読み上げを元へ）
+    if (_demoActive) {
+      _demoActive = false;
+      if (_demoStopTimer) { clearTimeout(_demoStopTimer); _demoStopTimer = null; }
+      readoutOn = _demoPrevReadout;
+    }
     // タップ練習の後始末（直前のスコア表示は残す）
     if (_tapSweepTimer) { clearInterval(_tapSweepTimer); _tapSweepTimer = null; }
     _tapCountInLeft = 0;
