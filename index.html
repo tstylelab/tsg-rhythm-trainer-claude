@@ -1189,22 +1189,53 @@
   /* ===== タップ練習モード ===== */
   #tap-pad {
     display: none;
-    margin: 10px 0 6px;
-    min-height: 150px;
-    border-radius: 14px;
-    border: 2px solid #c8ccd6;
-    background: linear-gradient(to bottom, #f7f8fa, #e8eaf0);
-    box-shadow: 0 3px 0 #b8bcc8;
+    margin: 6px 0 6px;
+    border-radius: 16px;
+    border: 1.5px solid #dbe3ec;
+    background: #fbfcfe;
+    box-shadow: 0 2px 10px rgba(33,118,174,0.07);
     cursor: pointer;
     user-select: none;
     -webkit-user-select: none;
     touch-action: manipulation;
     text-align: center;
-    padding: 12px 10px 16px;
+    padding: 9px 14px 11px;
     box-sizing: border-box;
-    transition: background 0.08s;
   }
-  #tap-pad:active { background: linear-gradient(to bottom, #eceef4, #dde0e8); }
+  /* 叩くゾーン：大きな押しボタン風。ここが「叩くところ」と一目でわかるように */
+  .tap-zone {
+    position: relative;
+    margin: 3px auto 8px;
+    width: 100%; max-width: 340px;
+    min-height: 78px;
+    border-radius: 16px;
+    background: radial-gradient(120% 100% at 50% 30%, #eef5fc 0%, #dce9f6 100%);
+    border: 2px solid #b8d3ec;
+    box-shadow: inset 0 2px 10px rgba(33,118,174,0.12), 0 2px 0 #c3d5e6;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 2px;
+    transition: box-shadow 0.08s, transform 0.06s, background 0.08s;
+  }
+  /* 待機中はやさしく脈打って「押してね」を伝える（プレイ中は止める） */
+  #tap-pad:not(.playing) .tap-zone { animation: tapZonePulse 2.4s ease-in-out infinite; }
+  @keyframes tapZonePulse {
+    0%, 100% { box-shadow: inset 0 2px 10px rgba(33,118,174,0.12), 0 2px 0 #c3d5e6; }
+    50% { box-shadow: inset 0 2px 10px rgba(33,118,174,0.12), 0 0 0 5px rgba(33,118,174,0.10), 0 2px 0 #c3d5e6; }
+  }
+  #tap-pad:active .tap-zone {
+    box-shadow: inset 0 3px 12px rgba(33,118,174,0.22); transform: translateY(1px);
+    background: radial-gradient(120% 100% at 50% 30%, #e4eff9 0%, #d2e2f2 100%);
+    animation: none;
+  }
+  .tap-cta {
+    font-family: 'Oswald', sans-serif;
+    font-size: 1rem; font-weight: 700; letter-spacing: 0.26em;
+    color: #2176ae; text-indent: 0.26em; margin-top: 2px;
+  }
+  #tap-pad.playing .tap-cta { display: none; }
+  #tap-pad.playing .tap-zone {
+    border-color: #d3dbe6; background: #f4f7fb; box-shadow: inset 0 2px 8px rgba(0,0,0,0.06);
+  }
   /* 連打するボタン類はダブルタップ拡大を無効化（スマホでの誤ズーム・反応遅延を防ぐ） */
   .beat-dot, .beat-sub-dot, .now-nav-btn, .groove-btn, .live-fine-btn,
   #start-btn, #options-row > button {
@@ -1213,21 +1244,57 @@
   #tap-pad .tap-stats {
     font-family: 'Barlow Semi Condensed', sans-serif;
     font-size: 0.95rem; font-weight: 700; color: #555;
-    min-height: 1.3em; letter-spacing: 0.04em;
+    min-height: 1.1em; letter-spacing: 0.04em;
   }
   #tap-pad .tap-verdict {
     font-family: 'Oswald', sans-serif;
-    font-size: 3.2rem; font-weight: 700; line-height: 1.15;
-    min-height: 1.2em; color: #99a;
+    font-size: 2.5rem; font-weight: 700; line-height: 1.02;
+    min-height: 1em; color: #8aa4bd;
   }
   #tap-pad .tap-hint {
-    font-size: 0.78rem; color: #888; letter-spacing: 0.03em;
+    font-size: 0.8rem; color: #6b7280; letter-spacing: 0.02em; line-height: 1.45; margin-top: 5px;
   }
+  /* 操作ボタン（お手本 / タイミング補正）：そろえて洗練された2ボタン */
+  .tap-controls {
+    display: flex; gap: 8px; justify-content: center; margin-top: 9px;
+  }
+  .tap-ctrl-btn {
+    flex: 1 1 0; max-width: 168px;
+    padding: 9px 8px; font-size: 0.82rem; font-weight: 700;
+    border-radius: 10px; cursor: pointer; border: 1.5px solid;
+    display: inline-flex; align-items: center; justify-content: center; gap: 5px;
+    transition: background 0.12s, transform 0.06s; line-height: 1.2;
+  }
+  .tap-ctrl-btn:active { transform: scale(0.97); }
+  .tap-ctrl-demo  { color: #1a6b40; background: #eaf6ef; border-color: #a7d8bd; }
+  .tap-ctrl-demo:hover  { background: #ddefe4; }
+  .tap-ctrl-calib { color: #1c6ea3; background: #eaf3fb; border-color: #b8d3ec; }
+  .tap-ctrl-calib:hover { background: #dbe8f5; }
+  /* ズレ微調整：現在値を −／＋ の間に収めた丸ピル */
+  .tap-tune {
+    display: inline-flex; align-items: center; gap: 8px;
+    margin: 7px auto 0; padding: 4px 8px 4px 12px;
+    background: #f5f6f9; border: 1px solid #e6e8ee; border-radius: 999px;
+    vertical-align: middle;
+  }
+  .tap-tune-lead { font-size: 0.7rem; color: #9298a3; font-weight: 700; letter-spacing: 0.02em; }
+  .tap-tune-btn {
+    padding: 4px 12px; font-size: 0.78rem; font-weight: 700;
+    border: 1px solid #cdd2dc; border-radius: 999px; background: #fff; color: #555;
+    cursor: pointer; transition: transform 0.06s, background 0.12s;
+  }
+  .tap-tune-btn:hover { background: #f0f2f6; }
+  .tap-tune-btn:active { transform: scale(0.95); }
+  .tap-tune-val {
+    font-size: 0.72rem; color: #1c6ea3; font-weight: 700;
+    min-width: 62px; text-align: center; letter-spacing: 0.01em;
+  }
+  .tap-note { font-size: 0.66rem; color: #b0b4bd; margin-top: 6px; letter-spacing: 0.02em; }
   /* タイミングメーター（早い◀ 中央=ジャスト 遅い▶）— 暗い計器風・コンパクト */
   #tap-meter {
     position: relative;
     width: 100%; max-width: 300px; height: 22px;
-    margin: 6px auto 3px; border-radius: 11px; overflow: hidden;
+    margin: 4px auto 2px; border-radius: 11px; overflow: hidden;
     background:
       linear-gradient(to right,
         rgba(235,77,61,0.92) 0%,    rgba(235,77,61,0.92) 13.9%,
@@ -1565,6 +1632,103 @@
     align-items: center;
     gap: 8px;
   }
+
+  /* ===== 賞状コレクション ===== */
+  #trophy-progress {
+    text-align: center;
+    margin-bottom: 18px;
+  }
+  .trophy-prog-count {
+    font-size: 0.9rem; font-weight: 700; color: #1a1a2e; margin-bottom: 8px;
+  }
+  .trophy-prog-count b { color: #d4a017; font-size: 1.15rem; }
+  .trophy-prog-bar {
+    height: 10px; border-radius: 6px; background: #ececf2; overflow: hidden;
+    max-width: 340px; margin: 0 auto;
+  }
+  .trophy-prog-fill {
+    height: 100%; border-radius: 6px;
+    background: linear-gradient(90deg, #f0c14b, #d4a017);
+    transition: width 0.5s ease;
+  }
+  .trophy-prog-next { font-size: 0.8rem; color: #2176ae; margin-top: 10px; font-weight: 700; }
+  /* すごろくの道のり（横スクロール・ステージが増えても伸びる） */
+  .sugoroku {
+    display: flex; align-items: flex-start; justify-content: flex-start;
+    overflow-x: auto; padding: 6px 4px 4px; gap: 0;
+    -webkit-overflow-scrolling: touch;
+  }
+  .sg-node { flex: 0 0 auto; width: 56px; text-align: center; }
+  .sg-circle {
+    width: 44px; height: 44px; border-radius: 50%; margin: 6px auto 0;
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 800; font-size: 1rem; line-height: 1;
+  }
+  .sg-conn {
+    flex: 0 0 20px; height: 0; margin-top: 28px;
+    border-top: 3px dotted #cdd2dc;
+  }
+  .sg-conn-done { border-top-color: #e3c15a; } /* クリア済み区間は金の道 */
+  .sg-label { font-size: 0.64rem; margin-top: 5px; white-space: nowrap; color: #888; }
+  .sg-label-dim { color: #b8bcc5; }
+  .sg-done .sg-circle {
+    background: linear-gradient(160deg, #fffdf3, #fdf3d0);
+    border: 2px solid #e3c15a; color: #b8860b;
+  }
+  .sg-done .sg-label { color: #b8860b; font-weight: 800; }
+  .sg-current .sg-circle {
+    background: #2176ae; border: 2px solid #185fa5; color: #fff;
+    box-shadow: 0 0 0 4px #d5e8f7;
+  }
+  .sg-current .sg-label { color: #2176ae; font-weight: 800; }
+  .sg-locked .sg-circle { background: #eef0f4; border: 2px solid #e2e5ec; color: #b0b4bd; }
+  .sg-goal .sg-circle { background: #fff7e6; border: 2px dashed #e3c15a; color: #b8860b; }
+  .sg-goal .sg-label { color: #b8860b; font-weight: 800; }
+  #trophy-grid {
+    display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px;
+  }
+  @media (max-width: 420px) { #trophy-grid { grid-template-columns: 1fr; } }
+  .cert {
+    border-radius: 12px; padding: 16px 12px 14px; text-align: center;
+    position: relative; overflow: hidden; min-height: 132px;
+    display: flex; flex-direction: column; justify-content: center; gap: 4px;
+  }
+  /* 全問クリア＝金の賞状 */
+  .cert.done {
+    background: linear-gradient(160deg, #fffdf3, #fdf3d0);
+    border: 2px solid #e3c15a;
+    box-shadow: 0 3px 10px rgba(200,160,40,0.22);
+  }
+  .cert.done::before {
+    content: ''; position: absolute; inset: 5px; border: 1px solid #e3c15a;
+    border-radius: 8px; pointer-events: none;
+  }
+  .cert.done .cert-medal { font-size: 2.1rem; line-height: 1; }
+  .cert.done .cert-badge {
+    font-size: 0.66rem; font-weight: 800; color: #b8860b; letter-spacing: 0.1em;
+  }
+  .cert.done .cert-name { font-size: 0.9rem; font-weight: 800; color: #4a3a10; }
+  .cert.done .cert-date { font-size: 0.72rem; color: #a08842; }
+  .cert.done .cert-brand { font-size: 0.62rem; color: #c0a860; margin-top: 2px; }
+  /* 途中＝進捗表示 */
+  .cert.partial {
+    background: #f7f8fa; border: 2px dashed #cdd2dc;
+  }
+  .cert.partial .cert-medal { font-size: 1.8rem; line-height: 1; filter: grayscale(0.3); opacity: 0.85; }
+  .cert.partial .cert-name { font-size: 0.86rem; font-weight: 700; color: #555; }
+  .cert.partial .cert-count { font-size: 0.74rem; color: #888; }
+  .cert-mini-bar {
+    height: 6px; border-radius: 4px; background: #e2e5ec; overflow: hidden;
+    margin: 4px auto 0; max-width: 120px;
+  }
+  .cert-mini-fill { height: 100%; background: #7aa9d6; border-radius: 4px; }
+  /* 未着手＝伏せ */
+  .cert.locked {
+    background: #f2f3f6; border: 2px solid #e6e8ee;
+  }
+  .cert.locked .cert-medal { font-size: 1.8rem; line-height: 1; opacity: 0.4; }
+  .cert.locked .cert-name { font-size: 0.86rem; font-weight: 700; color: #b0b4bd; }
+  .cert.locked .cert-hint { font-size: 0.72rem; color: #b8bcc5; }
 
   .modal-section {
     margin-bottom: 18px;
@@ -2265,6 +2429,16 @@
   </div>
 </div>
 
+<!-- ===== 賞状コレクション（獲得した認定証の確認画面） ===== -->
+<div class="modal-overlay" id="trophy-modal" onclick="if(event.target===this)closeTrophyRoom()">
+  <div class="modal-box" style="max-width:520px;">
+    <button class="modal-close" onclick="closeTrophyRoom()">×</button>
+    <div class="modal-title" style="justify-content:center; text-align:center;">🏅 獲得した賞状</div>
+    <div id="trophy-progress"></div>
+    <div id="trophy-grid"></div>
+  </div>
+</div>
+
 <main>
 
   <!-- ===== METRONOME PANEL ===== -->
@@ -2297,27 +2471,37 @@
       <!-- タップ練習パッド（タップ練習モードON時のみ表示） -->
       <div id="tap-pad" onpointerdown="tapPadHit(event)" oncontextmenu="return false">
         <div class="tap-stats" id="tap-stats"></div>
-        <div class="tap-verdict" id="tap-verdict">👆</div>
+        <!-- 叩くところ：大きな押しボタン風のゾーン。中央に判定（👆→◎○×）＋「タップ」表示 -->
+        <div class="tap-zone">
+          <div class="tap-verdict" id="tap-verdict">👆</div>
+          <div class="tap-cta">タップ</div>
+        </div>
+        <!-- タイミングメーター（早い◀ 中央=ジャスト 遅い▶） -->
         <div class="tap-meter" id="tap-meter"><div class="tap-meter-center"></div></div>
         <div class="tap-meter-labels"><span>◀ 早い</span><span>ジャスト</span><span>遅い ▶</span></div>
-        <div class="tap-hint" id="tap-hint">ここをタップすると1小節のカウントの後に始まります。音符のタイミングでタップ！（PC: スペースキー）</div>
-        <div style="margin-top:10px;">
-          <button id="tap-demo-btn" onpointerdown="event.stopPropagation()" onclick="playDemo(event)"
-            title="このリズムを1周だけ、読み上げ付きで聴けます"
-            style="padding:4px 12px; font-size:0.75rem; color:#1a6b40; background:#eaf6ef;
-                   border:1px solid #9fd4b5; border-radius:6px; cursor:pointer; font-weight:700;">👂 お手本</button>
-          <button id="tap-calib-btn" onpointerdown="event.stopPropagation()" onclick="toggleCalibration(event)"
-            style="padding:4px 12px; font-size:0.75rem; color:#666; background:#fff;
-                   border:1px solid #ccd0da; border-radius:6px; cursor:pointer; margin-left:6px;">⏱ タイミング補正</button>
-          <span id="tap-calib-info" style="font-size:0.72rem; color:#999; margin-left:8px;"></span>
+        <div class="tap-hint" id="tap-hint">カウント（1・2・3・4）のあと、音符のタイミングでタップ</div>
+
+        <!-- 操作ボタン：お手本 / タイミング補正 -->
+        <div class="tap-controls">
+          <button id="tap-demo-btn" class="tap-ctrl-btn tap-ctrl-demo"
+            onpointerdown="event.stopPropagation()" onclick="playDemo(event)"
+            title="このリズムを1周だけ、読み上げ付きで聴けます">
+            <span aria-hidden="true">👂</span> お手本</button>
+          <button id="tap-calib-btn" class="tap-ctrl-btn tap-ctrl-calib"
+            onpointerdown="event.stopPropagation()" onclick="toggleCalibration(event)">
+            <span aria-hidden="true">⏱</span> タイミング補正</button>
         </div>
-        <div style="margin-top:8px; font-size:0.7rem; color:#999;">
-          手動微調整：
-          <button onpointerdown="event.stopPropagation()" onclick="nudgeCalib(-0.02,event)"
-            style="padding:3px 10px; font-size:0.8rem; border:1px solid #ccd0da; border-radius:6px; background:#fff; cursor:pointer;" title="「遅い」と出がちなとき">− 早め</button>
-          <button onpointerdown="event.stopPropagation()" onclick="nudgeCalib(0.02,event)"
-            style="padding:3px 10px; font-size:0.8rem; border:1px solid #ccd0da; border-radius:6px; background:#fff; cursor:pointer; margin-left:4px;" title="「早い」と出がちなとき">遅め ＋</button>
+
+        <!-- ズレの手動微調整（現在値を −／＋ の間に表示） -->
+        <div class="tap-tune">
+          <span class="tap-tune-lead">タップのズレ</span>
+          <button class="tap-tune-btn" onpointerdown="event.stopPropagation()" onclick="nudgeCalib(-0.02,event)"
+            title="「遅い」と出がちなとき">－ 早め</button>
+          <span class="tap-tune-val" id="tap-calib-info"></span>
+          <button class="tap-tune-btn" onpointerdown="event.stopPropagation()" onclick="nudgeCalib(0.02,event)"
+            title="「早い」と出がちなとき">遅め ＋</button>
         </div>
+        <div class="tap-note">PC はスペースキーでもタップできます</div>
       </div>
       <div class="live-bpm-row" style="margin-top:8px; margin-bottom:10px;">
         <div class="bpm-inline" title="数字をダブルクリック（ダブルタップ）で直接入力">
@@ -2441,9 +2625,16 @@
 
       <!-- 練習メニュー（常時表示・トグル廃止） -->
       <div id="metro-setlist-panel" style="margin-top:12px;">
-        <div class="menu-heading">
-          <div class="menu-heading-title">PRACTICE MENU</div>
-          <div class="menu-heading-sub">練習メニューはここから選ぼう</div>
+        <div class="menu-heading" style="display:flex; align-items:center; justify-content:space-between; gap:8px;">
+          <div>
+            <div class="menu-heading-title">PRACTICE MENU</div>
+            <div class="menu-heading-sub">練習メニューはここから選ぼう</div>
+          </div>
+          <button onclick="openTrophyRoom()" title="獲得した賞状を見る"
+            style="flex-shrink:0; padding:6px 12px; border:1.5px solid #e3c15a; border-radius:8px;
+                   background:linear-gradient(160deg,#fffdf3,#fdf3d0); color:#b8860b;
+                   font-size:0.78rem; font-weight:800; cursor:pointer; line-height:1.2; white-space:nowrap;">
+            🏅 賞状</button>
         </div>
         <!-- ステージを選ぶ（主役の入口・最上部） -->
         <div style="margin-bottom:14px;">
@@ -4633,6 +4824,136 @@ function updateCategoryProgress() {
   });
 }
 
+// ===== 賞状コレクション =====
+// ステージ一覧はステージ選択ドロップダウンから動的に生成する（単一の情報源）。
+// → 将来ステージを追加するときは、ドロップダウンに <option> を1行足すだけで
+//   賞状コレクション・道のりマップの両方が自動で追従する（ここは編集不要）。
+function getTrophyStages() {
+  const sel = document.getElementById('rhythm-category-select');
+  const out = [];
+  if (!sel) return out;
+  Array.from(sel.options).forEach(opt => {
+    if (!/^stage\d+/.test(opt.value)) return; // 「ステージ」だけ対象（旧カテゴリ・空選択は除外）
+    // updateCategoryProgress が付ける「（n/12）」等を除いた元ラベルを使う
+    const base = (opt.dataset.base || opt.textContent).replace(/（.*$/, '').trim();
+    const m = base.match(/^(\S+)[\s　]+([\s\S]*)$/); // 「ステージN」＋説明 に分割（半角/全角スペース対応）
+    out.push({
+      key: opt.value,
+      label: m ? m[1] : base,
+      sub:   m ? m[2].trim() : '',
+      num:   (opt.value.match(/\d+/) || [''])[0], // すごろくの丸に出す番号
+    });
+  });
+  return out;
+}
+
+// クリア済みパターンから、最後にクリアした日付を取り出す（賞状の日付表示用）
+function _stageLatestClearDate(key) {
+  const cat = RHYTHM_CATEGORIES[key] || [];
+  let latest = '';
+  cat.forEach(p => {
+    const rec = clearedMap[key + '/' + p.name];
+    if (rec && rec.date && rec.date > latest) latest = rec.date;
+  });
+  return latest; // 'YYYY-MM-DD' or ''
+}
+
+function openTrophyRoom() {
+  const grid = document.getElementById('trophy-grid');
+  const prog = document.getElementById('trophy-progress');
+  if (!grid || !prog) return;
+
+  const stages = getTrophyStages();
+
+  // まず各ステージの状態を集計（すごろく・賞状の両方で使う）
+  let totalPats = 0, totalCleared = 0, wonCerts = 0, currentIdx = -1;
+  const info = stages.map((st, i) => {
+    const cat = RHYTHM_CATEGORIES[st.key] || [];
+    const total = cat.length;
+    const cleared = cat.filter(p => clearedMap[st.key + '/' + p.name]).length;
+    const done = total > 0 && cleared === total;
+    totalPats += total; totalCleared += cleared;
+    if (done) wonCerts++;
+    // 「今ここ」＝まだ全クリアしていない最初のステージ（プレイヤーの現在地）
+    if (currentIdx === -1 && !done) currentIdx = i;
+    return { st, total, cleared, done };
+  });
+
+  // ===== すごろくの道のり =====
+  let path = '';
+  info.forEach((it, i) => {
+    let cls = 'sg-locked', inner = it.st.num || '';
+    if (it.done) { cls = 'sg-done'; inner = '🏆'; }
+    else if (i === currentIdx) { cls = 'sg-current'; }
+    const under = (i === currentIdx) ? '<div class="sg-label">今ここ</div>'
+                : it.done ? '<div class="sg-label">クリア</div>'
+                : '<div class="sg-label sg-label-dim">' + it.st.label + '</div>';
+    if (i > 0) path += '<div class="sg-conn ' + (info[i-1].done ? 'sg-conn-done' : '') + '"></div>';
+    path += '<div class="sg-node ' + cls + '">' +
+              '<div class="sg-circle">' + inner + '</div>' + under +
+            '</div>';
+  });
+  // ゴール旗（全ステージ制覇で🎉）
+  const allDone = totalPats > 0 && totalCleared >= totalPats;
+  path += '<div class="sg-conn ' + (info.length && info[info.length-1].done ? 'sg-conn-done' : '') + '"></div>';
+  path += '<div class="sg-node ' + (allDone ? 'sg-done' : 'sg-goal') + '">' +
+            '<div class="sg-circle">' + (allDone ? '🎉' : '🏁') + '</div>' +
+            '<div class="sg-label">ゴール</div></div>';
+
+  const pct = totalPats ? Math.round(totalCleared / totalPats * 100) : 0;
+  let nextHtml = '';
+  if (allDone) {
+    nextHtml = '<div class="trophy-prog-next">🎉 全ステージ制覇！おめでとうございます</div>';
+  } else if (currentIdx >= 0) {
+    const cur = info[currentIdx];
+    nextHtml = '<div class="trophy-prog-next">次のゴールまで、あと ' + (cur.total - cur.cleared) +
+               ' 問（' + cur.st.label + '）</div>';
+  }
+  prog.innerHTML =
+    '<div class="trophy-prog-count">獲得した賞状 <b>' + wonCerts + '</b> / ' + stages.length + ' 枚</div>' +
+    '<div class="sugoroku">' + path + '</div>' +
+    nextHtml;
+
+  // ===== 賞状コレクション（スタンプカード） =====
+  grid.innerHTML = '';
+  info.forEach(it => {
+    const st = it.st;
+    const card = document.createElement('div');
+    card.className = 'cert';
+    if (it.done) {
+      const d = _stageLatestClearDate(st.key).replace(/-/g, '.');
+      card.classList.add('done');
+      card.innerHTML =
+        '<div class="cert-medal">🏆</div>' +
+        '<div class="cert-badge">認定証</div>' +
+        '<div class="cert-name">' + st.label + (st.sub ? '<br>' + st.sub : '') + '</div>' +
+        '<div class="cert-date">' + (d ? d + ' 達成' : '達成') + '</div>' +
+        '<div class="cert-brand">TSG ギタースクール</div>';
+    } else if (it.cleared > 0) {
+      const p = it.total ? Math.round(it.cleared / it.total * 100) : 0;
+      card.classList.add('partial');
+      card.innerHTML =
+        '<div class="cert-medal">🎖️</div>' +
+        '<div class="cert-name">' + st.label + '</div>' +
+        '<div class="cert-count">' + it.cleared + ' / ' + it.total + ' 問クリア</div>' +
+        '<div class="cert-mini-bar"><div class="cert-mini-fill" style="width:' + p + '%"></div></div>';
+    } else {
+      card.classList.add('locked');
+      card.innerHTML =
+        '<div class="cert-medal">🔒</div>' +
+        '<div class="cert-name">' + st.label + '</div>' +
+        '<div class="cert-hint">' + (it.total > 0 ? 'まだ挑戦していません' : '準備中') + '</div>';
+    }
+    grid.appendChild(card);
+  });
+
+  document.getElementById('trophy-modal').classList.add('open');
+}
+
+function closeTrophyRoom() {
+  document.getElementById('trophy-modal').classList.remove('open');
+}
+
 // クリア演出のタイマー（停止・手動移動時に取り消せるようハンドルを保持）
 let _advanceTimer = null, _stageClearTimer = null;
 function cancelClearTimers() {
@@ -4745,8 +5066,8 @@ function updateCalibInfo() {
   const el = document.getElementById('tap-calib-info');
   if (!el) return;
   el.textContent = (tapCalibOffset !== null && isFinite(tapCalibOffset))
-    ? `補正: ${Math.round(tapCalibOffset * 1000)}ms`
-    : `未計測（自動推定: ${Math.round(effectiveTapOffset() * 1000)}ms）`;
+    ? `${tapCalibOffset >= 0 ? '＋' : '－'}${Math.abs(Math.round(tapCalibOffset * 1000))}ms`
+    : `自動 ${Math.round(effectiveTapOffset() * 1000)}ms`;
 }
 
 function toggleCalibration(e) {
@@ -4849,9 +5170,11 @@ function resetTapSession() {
   const v = document.getElementById('tap-verdict');
   const s = document.getElementById('tap-stats');
   const h = document.getElementById('tap-hint');
+  const pad = document.getElementById('tap-pad');
+  if (pad) pad.classList.remove('playing'); // 待機表示（「タップ」CTA・脈動）に戻す
   if (v) { v.textContent = '👆'; v.className = 'tap-verdict'; }
   if (s) s.textContent = '';
-  if (h) h.textContent = 'ここをタップすると1小節のカウントの後に始まります。音符のタイミングでタップ！（PC: スペースキー）';
+  if (h) h.textContent = 'カウント（1・2・3・4）のあと、音符のタイミングでタップ';
 }
 
 function clearTapNoteColors() {
@@ -5260,6 +5583,8 @@ function toggleMetronome() {
         if (h) h.textContent = 'カウントイン…（1・2・3・4 のあとスタート）';
         if (_tapSweepTimer) clearInterval(_tapSweepTimer);
         _tapSweepTimer = setInterval(tapSweep, 120);
+        const _tp = document.getElementById('tap-pad');
+        if (_tp) _tp.classList.add('playing'); // プレイ中は「タップ」CTA・脈動を止める
       }
       nextNoteTime = ctx.currentTime + 0.05;
       currentBeat = 0;
@@ -5281,6 +5606,8 @@ function toggleMetronome() {
     clearTimeout(timerID);
     metronomeRunning = false;
     cancelClearTimers(); // 手動停止したのに数秒後「次の問題へ」が発火するのを防ぐ
+    const _tp = document.getElementById('tap-pad');
+    if (_tp) _tp.classList.remove('playing'); // 待機表示（「タップ」CTA・脈動）に戻す
     // 鳴りっぱなしの読み上げ音（特に長いター）を止める
     if (_readoutPrev) { try { _readoutPrev.src.stop(); } catch(e) {} _readoutPrev = null; }
     // お手本再生の後始末（一時的にONにした読み上げを元へ）
