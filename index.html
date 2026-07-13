@@ -1205,6 +1205,11 @@
     transition: background 0.08s;
   }
   #tap-pad:active { background: linear-gradient(to bottom, #eceef4, #dde0e8); }
+  /* 連打するボタン類はダブルタップ拡大を無効化（スマホでの誤ズーム・反応遅延を防ぐ） */
+  .beat-dot, .beat-sub-dot, .now-nav-btn, .groove-btn, .live-fine-btn,
+  #start-btn, #options-row > button {
+    touch-action: manipulation;
+  }
   #tap-pad .tap-stats {
     font-family: 'Barlow Semi Condensed', sans-serif;
     font-size: 0.95rem; font-weight: 700; color: #555;
@@ -2322,12 +2327,12 @@
         </div>
         <button class="live-fine-btn"
           onmousedown="startBpmHold(-1)" onmouseup="stopBpmHold()" onmouseleave="stopBpmHold()"
-          ontouchstart="startBpmHold(-1);event.preventDefault()" ontouchend="stopBpmHold()">−</button>
+          ontouchstart="startBpmHold(-1);event.preventDefault()" ontouchend="stopBpmHold()" ontouchcancel="stopBpmHold()">−</button>
         <input type="range" id="bpm-slider" min="30" max="240" value="120"
           oninput="setBpm(+this.value); hideSliderHint();">
         <button class="live-fine-btn"
           onmousedown="startBpmHold(+1)" onmouseup="stopBpmHold()" onmouseleave="stopBpmHold()"
-          ontouchstart="startBpmHold(+1);event.preventDefault()" ontouchend="stopBpmHold()">+</button>
+          ontouchstart="startBpmHold(+1);event.preventDefault()" ontouchend="stopBpmHold()" ontouchcancel="stopBpmHold()">+</button>
       </div>
 
 
@@ -2659,6 +2664,8 @@ function initMetroSortable() {
       moveArr(metroShowPickArr);
       moveArr(metroBeatMutedArr);
       moveArr(metroSubMutedArr);
+      _padAbcs();
+      moveArr(currentCategoryAbcStrings); // 楽譜も一緒に動かす（置き去りにすると別の譜面が表示される）
 
       // 選択中スロットのインデックスを追従
       if (metroSelectedSlot === oldIdx) {
@@ -2675,6 +2682,11 @@ function initMetroSortable() {
   });
 }
 
+// スロット操作（並び替え・複製・削除）で楽譜abcも他の配列と一緒に動かせるよう48要素に揃える
+function _padAbcs() {
+  while (currentCategoryAbcStrings.length < 48) currentCategoryAbcStrings.push('');
+}
+
 function _currentSetlistPayload() {
   return JSON.stringify({
     slots: metroSlots, names: metroNames, beats: metroBeatsArr,
@@ -2684,7 +2696,9 @@ function _currentSetlistPayload() {
     showPickArr: metroShowPickArr,
     selectedSlot: metroSelectedSlot, slotCount: metroSlotCount,
     beatMuted: metroBeatMutedArr, subMuted: metroSubMutedArr,
-    categoryKey: _currentCategoryKey
+    categoryKey: _currentCategoryKey,
+    // 楽譜abcはスロット単位で保存する（カテゴリから再導出すると並び替え・削除が反映されない）
+    abcs: currentCategoryAbcStrings.slice(0, 48)
   });
 }
 
@@ -2721,7 +2735,7 @@ function _applySetlistState(s) {
     if (Array.isArray(s.subMuted))     s.subMuted.forEach((v,i)=>{ if(i<48) metroSubMutedArr[i]=Array.isArray(v)?v.map(r=>Array.isArray(r)?r.slice():[]):[] });
     if (typeof s.selectedSlot==='number') metroSelectedSlot = s.selectedSlot;
     if ([12,24,36,48].includes(s.slotCount)) metroSlotCount = s.slotCount;
-    if (metroSelectedSlot >= metroSlotCount) metroSelectedSlot = 0;
+    if (metroSelectedSlot >= metroSlotCount || metroSelectedSlot < 0) metroSelectedSlot = 0;
     const catSel = document.getElementById('rhythm-category-select');
     if (s.categoryKey && RHYTHM_CATEGORIES && RHYTHM_CATEGORIES[s.categoryKey]) {
       _currentCategoryKey = s.categoryKey;
@@ -2731,6 +2745,10 @@ function _applySetlistState(s) {
       _currentCategoryKey = '';
       currentCategoryAbcStrings = [];
       if (catSel) catSel.value = '';
+    }
+    // スロット単位で保存された楽譜があればそちらを優先（並び替え・削除後の状態を正しく復元）
+    if (Array.isArray(s.abcs)) {
+      currentCategoryAbcStrings = s.abcs.slice(0, 48).map(v => typeof v === 'string' ? v : '');
     }
   } catch(e) {}
 }
@@ -2780,7 +2798,7 @@ function _resetSetlistArrays() {
   metroBeatMutedArr = Array(48).fill(null).map(() => []);
   metroSubMutedArr  = Array(48).fill(null).map(() => []);
   metroSelectedSlot = 0;
-  metroSlotCount    = 12;
+  metroSlotCount    = 24;
   _currentCategoryKey = '';
   currentCategoryAbcStrings = [];
   const catSel = document.getElementById('rhythm-category-select');
@@ -2964,6 +2982,10 @@ function updateMetroExpandBtn() {
 }
 
 function selectMetroSlot(idx) {
+  // ゲーム採点中に別スロットへ移ると、古い問題の判定ターゲットが残ったまま
+  // 新しい譜面を叩くことになる。移動前に止めて仕切り直す
+  if (metronomeRunning && gameActive) toggleMetronome();
+  cancelClearTimers();
   metroSelectedSlot = idx;
   for (let i = 0; i < metroSlotCount; i++) {
     const b = document.getElementById('metro-slot-' + i);
@@ -3055,6 +3077,7 @@ function duplicateMetroSlot(i) {
     alert(`スロットが満杯です（最大${metroSlotCount}）`);
     return;
   }
+  _padAbcs();
   for (let j = last; j > i + 1; j--) {
     metroSlots[j]        = metroSlots[j-1];
     metroNames[j]        = metroNames[j-1];
@@ -3067,6 +3090,7 @@ function duplicateMetroSlot(i) {
     metroShowPickArr[j]  = metroShowPickArr[j-1];
     metroBeatMutedArr[j] = Array.isArray(metroBeatMutedArr[j-1]) ? metroBeatMutedArr[j-1].slice() : [];
     metroSubMutedArr[j]  = Array.isArray(metroSubMutedArr[j-1]) ? metroSubMutedArr[j-1].map(r => Array.isArray(r) ? r.slice() : []) : [];
+    currentCategoryAbcStrings[j] = currentCategoryAbcStrings[j-1];
   }
   metroSlots[i+1]        = metroSlots[i];
   metroNames[i+1]        = metroNames[i];
@@ -3079,6 +3103,7 @@ function duplicateMetroSlot(i) {
   metroShowPickArr[i+1]  = metroShowPickArr[i];
   metroBeatMutedArr[i+1] = Array.isArray(metroBeatMutedArr[i]) ? metroBeatMutedArr[i].slice() : [];
   metroSubMutedArr[i+1]  = Array.isArray(metroSubMutedArr[i]) ? metroSubMutedArr[i].map(r => Array.isArray(r) ? r.slice() : []) : [];
+  currentCategoryAbcStrings[i+1] = currentCategoryAbcStrings[i];
   if (metroSelectedSlot > i) metroSelectedSlot++;
   saveMetroSetlist();
   renderMetroSlots();
@@ -3098,9 +3123,12 @@ function clearSelectedMetroSlot() {
   metroShowPickArr[i]  = false;
   metroBeatMutedArr[i] = [];
   metroSubMutedArr[i]  = [];
+  _padAbcs();
+  currentCategoryAbcStrings[i] = ''; // 楽譜も消す（残すと空スロットに前の譜面が表示される）
   saveMetroSetlist();
   renderMetroSlots();
   applyMetroSlot(i);
+  renderAbcScore(i);
   const ni = document.getElementById('metro-slot-name');
   if (ni) ni.value = '';
 }
@@ -3114,6 +3142,7 @@ function updateMetroSlotName(val) {
 
 function resetMetroSetlist() {
   if (!confirm('セットリストをリセットしますか？')) return;
+  if (metronomeRunning) toggleMetronome(); // 再生中の中身差し替えを防ぐ
   metroSlots = Array(48).fill(null);
   metroNames = Array(48).fill('');
   metroBeatsArr = Array(48).fill(4);
@@ -3133,8 +3162,19 @@ function resetMetroSetlist() {
   _applyingSlot = false;
   metroSelectedSlot = 0;
   metroSlotCount = 24;
-  localStorage.removeItem(METRO_LS_KEY);
+  // カテゴリ紐付けも解除（残すとScoreに前のステージの譜面が出続ける）
+  _currentCategoryKey = '';
+  currentCategoryAbcStrings = [];
+  const catSel = document.getElementById('rhythm-category-select');
+  if (catSel) catSel.value = '';
+  // removeItemではなく保存で反映する（名前付きリスト選択中はそのリストにも同期される。
+  // removeItemだと再読み込みでリストの古い内容が復活してしまう）
+  saveMetroSetlist();
   renderMetroSlots();
+  applyMetroSlot(0);
+  renderAbcScore(0);
+  updateNowBar();
+  updateStartCard();
 }
 
 // トグルUIは廃止（練習メニューは常時表示）。互換のため関数は残すが何もしない
@@ -3167,6 +3207,7 @@ function saveMetroSetlistFile() {
     beatMuted: metroBeatMutedArr,
     subMuted: metroSubMutedArr,
     categoryKey: _currentCategoryKey,
+    abcs: currentCategoryAbcStrings.slice(0, 48), // 楽譜もスロット単位で保存
     clears: clearedMap // ⭐クリア記録もバックアップに含める
   };
   const json = JSON.stringify(data, null, 2);
@@ -3186,7 +3227,15 @@ function loadMetroSetlistFile(event) {
   reader.onload = e => {
     try {
       const data = JSON.parse(e.target.result);
-      const n = [12,24,36,48].includes(data.slotCount) ? data.slotCount : 12;
+      // 最低限の形チェック（別アプリのJSONや壊れたファイルで全消去しないように）
+      if (!data || typeof data !== 'object' || (!Array.isArray(data.slots) && !Array.isArray(data.names))) {
+        alert('リズムトレーナーのバックアップファイルではないようです');
+        return;
+      }
+      if (metronomeRunning) toggleMetronome(); // 再生中に中身が差し替わると判定・保存が壊れるため停止
+      const GROOVES = ['normal','eighth','shuffle','sixteenth','sixteenth-shuffle','up'];
+      const SOUNDS  = ['beep','wood','hihat','voice'];
+      const n = [12,24,36,48].includes(data.slotCount) ? data.slotCount : 24;
       metroSlotCount    = n;
       metroSlots        = Array(48).fill(null);
       metroNames        = Array(48).fill('');
@@ -3199,18 +3248,19 @@ function loadMetroSetlistFile(event) {
       metroShowPickArr  = Array(48).fill(false);
       metroBeatMutedArr = Array(48).fill(null).map(()=>[]);
       metroSubMutedArr  = Array(48).fill(null).map(()=>[]);
-      if (Array.isArray(data.slots))        data.slots.forEach((v,i)=>{ if(i<n) metroSlots[i]=v; });
-      if (Array.isArray(data.names))        data.names.forEach((v,i)=>{ if(i<n) metroNames[i]=v||''; });
-      if (Array.isArray(data.beats))        data.beats.forEach((v,i)=>{ if(i<n) metroBeatsArr[i]=v||4; });
-      if (Array.isArray(data.grooves))      data.grooves.forEach((v,i)=>{ if(i<n) metroGroovesArr[i]=v||'normal'; });
+      // 値は検証しながら取り込む（手編集・改変されたファイルでアプリが動かなくなるのを防ぐ）
+      if (Array.isArray(data.slots))        data.slots.forEach((v,i)=>{ if(i<n){ const b=Number(v); metroSlots[i]=(v!==null&&isFinite(b))?Math.min(240,Math.max(30,Math.round(b))):null; } });
+      if (Array.isArray(data.names))        data.names.forEach((v,i)=>{ if(i<n) metroNames[i]=(v==null?'':String(v)).slice(0,40); });
+      if (Array.isArray(data.beats))        data.beats.forEach((v,i)=>{ if(i<n){ const b=parseInt(v,10); metroBeatsArr[i]=(b>=1&&b<=16)?b:4; } });
+      if (Array.isArray(data.grooves))      data.grooves.forEach((v,i)=>{ if(i<n) metroGroovesArr[i]=GROOVES.includes(v)?v:'normal'; });
       if (Array.isArray(data.is8thBaseArr)) data.is8thBaseArr.forEach((v,i)=>{ if(i<n) metroIs8thBaseArr[i]=!!v; });
-      if (Array.isArray(data.shuffleRatios))data.shuffleRatios.forEach((v,i)=>{ if(i<n) metroShuffleArr[i]=v||67; });
-      if (Array.isArray(data.sounds))       data.sounds.forEach((v,i)=>{ if(i<n) metroSoundsArr[i]=v||'beep'; });
+      if (Array.isArray(data.shuffleRatios))data.shuffleRatios.forEach((v,i)=>{ if(i<n){ const r=parseInt(v,10); metroShuffleArr[i]=(r>=51&&r<=80)?r:67; } });
+      if (Array.isArray(data.sounds))       data.sounds.forEach((v,i)=>{ if(i<n) metroSoundsArr[i]=SOUNDS.includes(v)?v:'beep'; });
       if (Array.isArray(data.allAccentArr)) data.allAccentArr.forEach((v,i)=>{ if(i<n) metroAllAccentArr[i]=!!v; });
       if (Array.isArray(data.showPickArr))  data.showPickArr.forEach((v,i)=>{ if(i<n) metroShowPickArr[i]=!!v; });
-      if (Array.isArray(data.beatMuted))    data.beatMuted.forEach((v,i)=>{ if(i<n) metroBeatMutedArr[i]=Array.isArray(v)?v.slice():[]; });
-      if (Array.isArray(data.subMuted))     data.subMuted.forEach((v,i)=>{ if(i<n) metroSubMutedArr[i]=Array.isArray(v)?v.map(r=>Array.isArray(r)?r.slice():[]):[]; });
-      if (data.name) { const ni = document.getElementById('metro-setlist-name'); if(ni) ni.value=data.name; }
+      if (Array.isArray(data.beatMuted))    data.beatMuted.forEach((v,i)=>{ if(i<n) metroBeatMutedArr[i]=Array.isArray(v)?v.slice(0,16).map(x=>!!x):[]; });
+      if (Array.isArray(data.subMuted))     data.subMuted.forEach((v,i)=>{ if(i<n) metroSubMutedArr[i]=Array.isArray(v)?v.slice(0,16).map(r=>Array.isArray(r)?r.slice(0,3).map(x=>!!x):[]):[]; });
+      if (data.name) { const ni = document.getElementById('metro-setlist-name'); if(ni) ni.value=String(data.name).slice(0,40); }
       // カテゴリ（リズム譜の紐付け）を復元
       const catSel = document.getElementById('rhythm-category-select');
       if (data.categoryKey && RHYTHM_CATEGORIES[data.categoryKey]) {
@@ -3222,17 +3272,31 @@ function loadMetroSetlistFile(event) {
         currentCategoryAbcStrings = [];
         if (catSel) catSel.value = '';
       }
+      // スロット単位で保存された楽譜があればそちらを優先（並び替え・削除後の状態を復元）
+      if (Array.isArray(data.abcs)) {
+        currentCategoryAbcStrings = data.abcs.slice(0, 48).map(v => typeof v === 'string' ? v : '');
+      }
       // ⭐クリア記録の復元（既存の記録とマージ）
-      if (data.clears && typeof data.clears === 'object') {
+      if (data.clears && typeof data.clears === 'object' && !Array.isArray(data.clears)) {
         clearedMap = Object.assign({}, clearedMap, data.clears);
         lsSet(CLEARS_LS_KEY, JSON.stringify(clearedMap));
         updateCategoryProgress();
       }
       metroSelectedSlot = 0;
+      // 名前付きリストを選択中なら共通リストへ切り替えてから保存する
+      // （そのまま保存すると自動同期で選択中のリストがファイル内容に静かに上書きされる）
+      if (metroCurrentListId !== null) {
+        metroCurrentListId = null;
+        saveMetroLists();
+        renderMetroListSelect();
+      }
+      lsSet(METRO_DEFAULT_KEY, _currentSetlistPayload()); // 共通リストの退避内容も同期
       saveMetroSetlist();
       renderMetroSlots();
       applyMetroSlot(0);
       renderAbcScore(0);
+      updateNowBar();
+      updateStartCard();
       showToast('📂 ファイルから練習メニューを読み込みました');
     } catch(err) { alert('読み込みに失敗しました'); }
   };
@@ -3492,6 +3556,7 @@ function setShowPick(val) {
 
 function setReadout(val) {
   readoutOn = !!val;
+  if (_demoActive) _demoPrevReadout = readoutOn; // お手本中の操作はユーザーの意思を優先（停止時の復元で上書きしない）
   lsSet('tsg-rhythm-readout', readoutOn ? '1' : '0');
   const btn = document.getElementById('readout-btn');
   if (btn) btn.classList.toggle('readout-active', readoutOn);
@@ -3898,6 +3963,7 @@ let _bpmHoldTimer = null;
 let _bpmHoldStep = 0;
 
 function startBpmHold(delta) {
+  stopBpmHold(); // 多重起動防止（touchstart+mousedownの二重発火やcancel漏れでも暴走しない）
   adjustBpm(delta);  // 1回目はすぐ反応
   _bpmHoldStep = 0;
   _bpmHoldTimer = setTimeout(function repeat() {
@@ -4253,13 +4319,17 @@ async function loadReadoutBuffers() {
   if (readoutLoaded) return;
   readoutLoaded = true;
   const ctx = getAudioCtx();
+  let allOk = true;
   await Promise.all(READOUT_FILES.map(name =>
     fetch('sounds/readout/' + name + '.wav')
       .then(r => r.arrayBuffer())
       .then(ab => ctx.decodeAudioData(ab))
       .then(buf => { readoutBuffers[name] = { buffer: buf, offset: detectReadoutOnset(buf) }; })
-      .catch(e => console.warn('readout load failed:', name, e))
+      .catch(e => { allOk = false; console.warn('readout load failed:', name, e); })
   ));
+  // 一部でも失敗したらフラグを戻す（電波の一瞬の途切れで読み上げが永久に無音になるのを防ぐ。
+  // 次のSTARTで再読み込みされる）
+  if (!allOk) readoutLoaded = false;
 }
 
 // 1スロット分の読み上げを予約。伸ばしモードでは sustain を発音せず、
@@ -4339,7 +4409,8 @@ function scheduleReadoutVoice(time, type) {
 let tapModeOn = false;
 let gameActive = false;     // true=ゲームとして再生中（カウントイン・採点あり）/ false=METROの確認再生
 let tapTargets = [];        // {time, idx, loopNo, judged, verdict} スケジューラが積む
-let tapExtra = 0;           // 余分なタップ数（ループごとにリセット）
+let tapExtraTimes = [];     // 余分なタップの発生時刻（ループ集計時に正しい周へ帰属）
+let _gameFirstTargetTime = null; // ゲーム1周目の最初の正解時刻（カウントイン中の誤判定防止）
 let _tapLoopNo = 0;
 let _tapLoopStarted = false;
 let _tapCountInLeft = 0;    // カウントイン残り拍数
@@ -4390,7 +4461,7 @@ function loadEffectBuffers() {
       .then(r => r.arrayBuffer())
       .then(ab => ctx.decodeAudioData(ab))
       .then(buf => { effectBuffers[name] = buf; })
-      .catch(e => console.warn('effect load failed:', name, e));
+      .catch(e => { effectsLoaded = false; console.warn('effect load failed:', name, e); }); // 失敗時は次回に再試行
   });
 }
 function playEffect(name) {
@@ -4450,10 +4521,17 @@ function gotoAdjacentSlot(dir) {
   const j = _adjacentSlot(dir);
   if (j < 0) return;
   const wasRunning = metronomeRunning;
+  const wasGame = gameActive;
+  const wasDemo = _demoActive;
   if (wasRunning) toggleMetronome();
   selectMetroSlot(j);
   renderAbcScore(j);
-  if (wasRunning && tapModeOn) toggleMetronome();
+  // 再開はゲーム/確認再生のみ。お手本中の移動は再開しない
+  // （「1周で止まる」はずのお手本が無限のプレーン再生に化けるのを防ぐ）
+  if (wasRunning && !wasDemo) {
+    gameActive = wasGame && tapModeOn;
+    toggleMetronome();
+  }
 }
 
 // ===== はじめて導線 =====
@@ -4466,6 +4544,7 @@ function updateStartCard() {
 // 1タップでステージ1＋トレーニング開始。
 // 補正未計測の端末は、判定がズレて楽しめないため先にタイミング補正へ誘導する
 function startFirstPlay() {
+  if (metronomeRunning) toggleMetronome(); // 再生中なら止めてから仕切り直す
   loadRhythmCategory('stage1');
   updateStartCard();
   if (!tapModeOn) setTapMode(true);
@@ -4554,6 +4633,13 @@ function updateCategoryProgress() {
   });
 }
 
+// クリア演出のタイマー（停止・手動移動時に取り消せるようハンドルを保持）
+let _advanceTimer = null, _stageClearTimer = null;
+function cancelClearTimers() {
+  if (_advanceTimer) { clearTimeout(_advanceTimer); _advanceTimer = null; }
+  if (_stageClearTimer) { clearTimeout(_stageClearTimer); _stageClearTimer = null; }
+}
+
 // クリア後、次の問題（中身のある次のスロット）へ自動で進む
 function _advanceToNextSlot() {
   if (!tapModeOn || !metronomeRunning) return; // 手動で止めていたら何もしない
@@ -4580,15 +4666,17 @@ function markSlotCleared(i) {
   updateNowBar();
   playEffect('clear');
   throwConfetti(26);
+  cancelClearTimers();
   if (isStageAllCleared()) {
-    setTimeout(() => {
+    _stageClearTimer = setTimeout(() => {
+      _stageClearTimer = null;
       playEffect('stageclear');
       throwConfetti(60); // 全クリアは盛大に
       showToast('🏆 ステージ全クリア！おめでとうございます！');
       if (metronomeRunning) toggleMetronome(); // 全クリアで締め
     }, 1200);
   } else {
-    setTimeout(_advanceToNextSlot, 2500);
+    _advanceTimer = setTimeout(() => { _advanceTimer = null; _advanceToNextSlot(); }, 2500);
   }
 }
 
@@ -4750,7 +4838,8 @@ function setTapMode(val) {
 
 function resetTapSession() {
   tapTargets = [];
-  tapExtra = 0;
+  tapExtraTimes = [];
+  _gameFirstTargetTime = null;
   _tapLoopNo = 0;
   _tapLoopStarted = false;
   _tapCountInLeft = 0;
@@ -4810,19 +4899,32 @@ function tapPadHit(e) {
     return;
   }
   if (_tapCountInLeft > 0) return;                      // カウントイン中は判定しない
-  judgeTap(ctx.currentTime - effectiveTapOffset());      // 端末遅延を補正して判定
+  const tapTime = ctx.currentTime - effectiveTapOffset(); // 端末遅延を補正
+  // カウントイン明け直後: 1周目の最初の正解より十分前のタップ（4拍目のカウントに
+  // 合わせた音など）は「余分なタップ」にせず無視する
+  if (_gameFirstTargetTime !== null && tapTime < _gameFirstTargetTime - 0.2) return;
+  judgeTap(tapTime);
 }
 
 // タップ時刻（補正済み）を最寄りの未判定アタックとマッチングして判定
 function judgeTap(tapTime) {
-  let best = null, bestAbs = Infinity;
-  for (const tg of tapTargets) {
-    if (tg.judged) continue;
-    const a = Math.abs(tapTime - tg.time);
-    if (a < bestAbs) { bestAbs = a; best = tg; }
+  // 未判定ターゲットを時刻順に並べ、最寄りを探す。マッチ許容窓は基本±0.2秒だが、
+  // 隣の未判定音符との中間を越えてまでマッチしない（16分など速い並びで
+  // 隣の音符を横取り→本来のタップが「余分」になる連鎖を防ぐ。下限±0.06秒=◎圏は確保）
+  const pend = tapTargets.filter(tg => !tg.judged).sort((a, b) => a.time - b.time);
+  let best = null, bestAbs = Infinity, bestWin = 0.2;
+  for (let i = 0; i < pend.length; i++) {
+    const a = Math.abs(tapTime - pend[i].time);
+    if (a < bestAbs) {
+      bestAbs = a; best = pend[i];
+      let win = 0.2;
+      if (i > 0) win = Math.min(win, Math.max(0.06, (pend[i].time - pend[i - 1].time) / 2));
+      if (i < pend.length - 1) win = Math.min(win, Math.max(0.06, (pend[i + 1].time - pend[i].time) / 2));
+      bestWin = win;
+    }
   }
-  if (!best || bestAbs > 0.2) {
-    tapExtra++;
+  if (!best || bestAbs > bestWin) {
+    tapExtraTimes.push(tapTime); // 発生時刻を記録（ループ集計時に正しい周へ帰属させる）
     _tapCombo = 0;
     showTapVerdict('v-miss', '×', '余分なタップ');
     return;
@@ -4852,7 +4954,9 @@ function judgeTap(tapTime) {
 
 // 取りこぼし監視（時間切れの正解を×に）＋古いターゲットの掃除
 function tapSweep() {
-  const now = getAudioCtx().currentTime;
+  // judgeTapと同じ「補正後の時間軸」で比較する。無補正だと遅延の大きい端末
+  // （Bluetoothイヤホン等）で、正しいタップより先に叩き逃しが確定してしまう
+  const now = getAudioCtx().currentTime - effectiveTapOffset();
   tapTargets.forEach(tg => {
     if (!tg.judged && now > tg.time + 0.2) {
       tg.judged = true;
@@ -4865,10 +4969,20 @@ function tapSweep() {
 }
 
 // ループ1周の締め（そのループのターゲット集計→スコア表示→表示リセット）
-function finalizeTapLoop(loopNo) {
+// boundaryTime = このループの終端（次ループ先頭）のオーディオ時刻。余分タップの帰属に使う
+function finalizeTapLoop(loopNo, boundaryTime) {
   tapSweep(); // 判定漏れを確定させる
   const mine = tapTargets.filter(tg => tg.loopNo === loopNo);
-  let perfect = 0, good = 0, miss = tapExtra;
+  // 余分タップは「このループ中に起きたもの」だけを数える（境界後のタップは次の周へ帰属）
+  let extras;
+  if (typeof boundaryTime === 'number') {
+    extras = tapExtraTimes.filter(x => x < boundaryTime).length;
+    tapExtraTimes = tapExtraTimes.filter(x => x >= boundaryTime);
+  } else {
+    extras = tapExtraTimes.length;
+    tapExtraTimes = [];
+  }
+  let perfect = 0, good = 0, miss = extras;
   mine.forEach(tg => {
     if (tg.verdict === 'tap-perfect') perfect++;
     else if (tg.verdict === 'tap-good') good++;
@@ -4878,25 +4992,27 @@ function finalizeTapLoop(loopNo) {
   if (total > 0) {
     const score = Math.round(100 * (perfect + good * 0.5) / total);
     const s = document.getElementById('tap-stats');
-    // クリア判定: ×ゼロの周はクリーン小節を積み上げ、1つでも×が出たらリセット
+    // クリア判定: ×ゼロかつ基準テンポ以上の周だけクリーン小節を積み上げる
+    // （スロー練習の周は積まない＝あとでテンポを上げた瞬間にクリアが成立する穴を塞ぐ）
     const slotIdx2 = metroSelectedSlot;
     const alreadyCleared = isSlotCleared(slotIdx2);
     const measuresPerLoop = Math.max(1, Math.round(beats / 4));
     const baseBpm = slotBaseBpm(slotIdx2); // 基準テンポ（カテゴリ定義のBPM）
     if (miss === 0) {
-      _tapCleanMeasures += measuresPerLoop;
-      if (!alreadyCleared && _tapCleanMeasures >= CLEAR_MEASURES &&
-          (baseBpm === null || bpm >= baseBpm)) {
+      const tempoOK = (baseBpm !== null && bpm >= baseBpm);
+      if (tempoOK) _tapCleanMeasures += measuresPerLoop;
+      if (!alreadyCleared && tempoOK && slotClearKey(slotIdx2) &&
+          _tapCleanMeasures >= CLEAR_MEASURES) {
         markSlotCleared(slotIdx2);
         showTapVerdict('v-perfect', '🎉 クリア！', `連続${CLEAR_MEASURES}小節ノーミス達成！`);
         showToast('🎉「' + (metroNames[slotIdx2] || 'このパターン') + '」をクリアしました！');
         if (s) s.textContent = `◎${perfect}　○${good}　×0　─　${score}点　⭐クリア済み`;
-        tapExtra = 0;
         clearTapNoteColors();
         return;
       }
       const streakInfo = alreadyCleared ? '⭐クリア済み'
-        : (baseBpm !== null && bpm < baseBpm) ? `基準テンポ${baseBpm}未満（クリア判定外）`
+        : (baseBpm === null) ? 'クリア判定対象外（ステージの問題で⭐が狙えます）'
+        : (bpm < baseBpm) ? `基準テンポ${baseBpm}未満（クリア判定外）`
         : `連続クリーン ${Math.min(_tapCleanMeasures, CLEAR_MEASURES)}/${CLEAR_MEASURES}小節`;
       if (s) s.textContent = `◎${perfect}　○${good}　×0　─　${score}点　${streakInfo}`;
     } else {
@@ -4904,7 +5020,6 @@ function finalizeTapLoop(loopNo) {
       if (s) s.textContent = `◎${perfect}　○${good}　×${miss}　─　${score}点`;
     }
   }
-  tapExtra = 0;
   // 表示リセット（次の周ですでに判定済みの音符の色は残す）
   clearTapNoteColors();
   tapTargets.filter(tg => tg.loopNo === loopNo + 1 && tg.verdict)
@@ -4912,12 +5027,20 @@ function finalizeTapLoop(loopNo) {
 }
 
 function scheduler() {
+  if (!metronomeRunning) return; // 停止後・二重起動時の孤児チェーンを自然消滅させる
   const ctx = getAudioCtx();
   const interval = 60 / bpm;
+  // バックグラウンドでタイマーが抑制されて大きく遅れた場合は再同期する
+  // （溜まった拍が復帰時に一括再生されてクリック連打になるのを防ぐ）
+  if (nextNoteTime < ctx.currentTime - 0.25) {
+    nextNoteTime = ctx.currentTime + 0.05;
+  }
   while (nextNoteTime < ctx.currentTime + 0.1) {
     const beat = currentBeat;
     const t = nextNoteTime;
     const isAccent = beat === 0;
+    // Voiceカウントは小節内の1〜4で数える（2小節以上のパターンで「8」等と言わないように）
+    const vBeat = (beats > 7 && beats % 4 === 0) ? beat % 4 : beat;
 
     // タップ練習: カウントイン（1小節ぶん、クリックのみ）
     if (_tapCountInLeft > 0) {
@@ -4938,8 +5061,12 @@ function scheduler() {
       if (beat === 0) {
         if (_tapLoopStarted) {
           const loopNo = _tapLoopNo;
-          setTimeout(() => finalizeTapLoop(loopNo), Math.max(0, (t - ctx.currentTime) * 1000 + 250));
+          // 猶予は250ms＋端末補正ぶん（大遅延端末でループ末尾の音符が未判定のまま集計されるのを防ぐ）
+          setTimeout(() => finalizeTapLoop(loopNo, t),
+            Math.max(0, (t - ctx.currentTime) * 1000 + 250 + effectiveTapOffset() * 1000));
           _tapLoopNo++;
+        } else {
+          _gameFirstTargetTime = t; // 1周目の開始時刻（これより十分前のタップは判定しない）
         }
         _tapLoopStarted = true;
       }
@@ -4957,14 +5084,14 @@ function scheduler() {
     const clickMode = (tapModeOn && gameActive) ? 'beat' : (readoutOn ? readoutClick : 'pattern');
     if (clickMode === 'pattern') {
       // リズムパターン通りに鳴らす（通常動作）
-      if (!beatMuted[beat]) scheduleNote(t, isAccent, beat);
+      if (!beatMuted[beat]) scheduleNote(t, isAccent, vBeat);
       const sm = subMuted[beat] || [];
       subOffs.forEach((f, sj) => {
-        if (!sm[sj]) scheduleSubNote(t + interval * f, beat);
+        if (!sm[sj]) scheduleSubNote(t + interval * f, vBeat);
       });
     } else if (clickMode === 'beat') {
       // 拍の頭だけ鳴らす（足で拍を踏む代わり）。声がリズムを担当する
-      scheduleNote(t, isAccent, beat);
+      scheduleNote(t, isAccent, vBeat);
     }
     // clickMode === 'off' はクリックなし（声のみ）
 
@@ -4995,6 +5122,7 @@ function scheduler() {
 }
 
 function flashBeat(beat) {
+  if (!metronomeRunning) return; // 停止後に保留setTimeoutが点灯を残さないように
   const isAccent = beat === 0;
 
   // ビートドット（全グループのメインドットのみ）
@@ -5021,6 +5149,7 @@ function flashBeat(beat) {
 }
 
 function flashSubDot(beat, subIndex) {
+  if (!metronomeRunning) return; // 停止後に保留setTimeoutが点灯を残さないように
   // 全サブドットのactiveを外す
   document.querySelectorAll('.beat-sub-dot').forEach(s => s.classList.remove('active'));
   const s = document.getElementById('sdot-' + beat + '-' + subIndex);
@@ -5089,12 +5218,19 @@ function playDemo(e) {
   readoutOn = true; // 一時的に読み上げON（ボタン表示やlocalStorageは変えない）
   showTapVerdict('', '👂', 'お手本を聴いてみよう（1周で止まります）');
   toggleMetronome();
-  const loopSec = (60 / bpm) * beats;
-  _demoStopTimer = setTimeout(() => {
-    _demoStopTimer = null;
-    if (metronomeRunning && !gameActive) toggleMetronome();
-    showTapVerdict('', '👆', 'タップして挑戦！');
-  }, (loopSec + 0.35) * 1000);
+  // 停止タイマーは実際に再生が始まってから起動する（iOSのresume待ち時間を含めて
+  // 計時すると1周目の末尾が切れるため）
+  const armStop = () => {
+    if (!_demoActive) return;
+    if (!metronomeRunning) { setTimeout(armStop, 60); return; }
+    const loopSec = (60 / bpm) * beats;
+    _demoStopTimer = setTimeout(() => {
+      _demoStopTimer = null;
+      if (metronomeRunning && !gameActive) toggleMetronome();
+      showTapVerdict('', '👆', 'タップして挑戦！');
+    }, (loopSec + 0.35) * 1000);
+  };
+  armStop();
 }
 
 // METROボタン: ゲームではなく「今のリズムをメトロノームのように鳴らす」確認用の再生
@@ -5108,8 +5244,13 @@ function toggleMetronome() {
   const btn = document.getElementById('start-btn');
   const card = document.getElementById('metro-card');
   if (!metronomeRunning) {
+    // タイミング補正中に開始操作が来たら補正を安全に中止（補正クリックと二重再生になり
+    // デタラメな補正値が保存されるのを防ぐ。playDemoの既存ガードと同方針）
+    if (calibOn) endCalibration(false);
     const ctx = getAudioCtx();
     const _startMetro = () => {
+      // resume()待ちの間に別の開始操作が完了していたら何もしない（scheduler二重起動防止）
+      if (metronomeRunning) return;
       if (currentSound === 'voice' && !voiceLoaded) loadVoiceBuffers();
       if (readoutOn && !readoutLoaded) loadReadoutBuffers();
       if (tapModeOn && gameActive) {
@@ -5122,15 +5263,16 @@ function toggleMetronome() {
       }
       nextNoteTime = ctx.currentTime + 0.05;
       currentBeat = 0;
+      metronomeRunning = true; // schedulerが自身のガードで即死しないよう先に立てる
       scheduler();
-      metronomeRunning = true;
       btn.textContent = 'STOP';
       btn.classList.add('running');
       if (card) card.classList.add('metro-running');
       updateWakeLock();
     };
-    if (ctx.state === 'suspended') {
+    if (ctx.state !== 'running') {
       // iOS: resume()の完了を待ってから開始しないと無音のまま走ることがある
+      // （suspendedだけでなく、電話・Siri割り込み後の'interrupted'状態もここで復帰させる）
       ctx.resume().then(_startMetro);
     } else {
       _startMetro();
@@ -5138,6 +5280,7 @@ function toggleMetronome() {
   } else {
     clearTimeout(timerID);
     metronomeRunning = false;
+    cancelClearTimers(); // 手動停止したのに数秒後「次の問題へ」が発火するのを防ぐ
     // 鳴りっぱなしの読み上げ音（特に長いター）を止める
     if (_readoutPrev) { try { _readoutPrev.src.stop(); } catch(e) {} _readoutPrev = null; }
     // お手本再生の後始末（一時的にONにした読み上げを元へ）
@@ -6417,7 +6560,8 @@ document.addEventListener('keydown', function(e) {
   if (e.key === ' ' || e.code === 'Space') {
     e.preventDefault();
     if (e.repeat) return; // 押しっぱなしの連打を防ぐ
-    if (tapModeOn && (metronomeRunning || calibOn)) { tapPadHit(null); return; } // タップ練習中・補正中はスペース＝タップ
+    // トレーナー中はスペース＝タップ（停止中ならゲーム開始・補正中は補正タップ）
+    if (tapModeOn) { tapPadHit(null); return; }
     toggleMetronome();
     return;
   }
@@ -6452,8 +6596,9 @@ window.addEventListener('blur', stopBpmHold);
 // 削除されたため撤去。古いlastTab値が残っているとTypeErrorになっていた。
 localStorage.removeItem('tsg-rhythm-lastTab');
 </script>
-<script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/abcjs@6.4.4/dist/abcjs-basic-min.js" onload="if(typeof currentCategoryAbcStrings!=='undefined'&&currentCategoryAbcStrings.length>0)renderAbcScore(metroSelectedSlot);"></script>
+<!-- integrity: CDNの中身が差し替えられた場合に読み込みを拒否する（改ざん対策） -->
+<script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js" integrity="sha384-BSxuMLxX+FCbTdYec3TbXlnMGEEM2QXTFdtDaveen71o+jswm2J36+xFqp8k4VHM" crossorigin="anonymous"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js" integrity="sha384-3zSEDfvllQohrq0PHL1fOXJuC/jSOO34H46t6UQfobFOmxE5BpjjaIJY5F2/bMnU" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/abcjs@6.4.4/dist/abcjs-basic-min.js" integrity="sha384-sk+P5M5THZ2+cNNE7wQUEAwkU+812jPeru2bG637mOeCRxiCbs2hD05PdpeqFhjh" crossorigin="anonymous" onload="if(typeof currentCategoryAbcStrings!=='undefined'&&currentCategoryAbcStrings.length>0)renderAbcScore(metroSelectedSlot);"></script>
 </body>
 </html>
