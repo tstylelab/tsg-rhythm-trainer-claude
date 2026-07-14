@@ -2514,6 +2514,10 @@
         <!-- 連続成功ポップ（1小節キレイに叩けるたび「N小節連続成功！」がファッと浮き出る） -->
         <div class="tap-streak-pop" id="tap-streak-pop" aria-hidden="true"></div>
         <div class="tap-stats" id="tap-stats"></div>
+        <!-- タイミングメーター（早い◀ 中央=ジャスト 遅い▶）
+             叩く指でメーターが隠れると判定が見えないため、必ずタップゾーンの「上」に置く -->
+        <div class="tap-meter" id="tap-meter"><div class="tap-meter-center"></div></div>
+        <div class="tap-meter-labels"><span>◀ 早い</span><span>ジャスト</span><span>遅い ▶</span></div>
         <!-- 叩くところ：大きな押しボタン風のゾーン。中央に判定（👆→◎○×）＋「タップ」表示 -->
         <div class="tap-zone">
           <div class="tap-verdict" id="tap-verdict">👆</div>
@@ -2521,9 +2525,6 @@
           <!-- 開始前カウントダウン（クリック音に同期して 1・2・3・4 → スタート！） -->
           <div class="tap-countdown" id="tap-countdown" aria-hidden="true"></div>
         </div>
-        <!-- タイミングメーター（早い◀ 中央=ジャスト 遅い▶） -->
-        <div class="tap-meter" id="tap-meter"><div class="tap-meter-center"></div></div>
-        <div class="tap-meter-labels"><span>◀ 早い</span><span>ジャスト</span><span>遅い ▶</span></div>
         <div class="tap-hint" id="tap-hint">カウント（1・2・3・4）のあと、音符のタイミングでタップ</div>
 
         <!-- 操作ボタン：お手本 / タイミング補正 -->
