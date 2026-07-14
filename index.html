@@ -1232,6 +1232,32 @@
     font-size: 1rem; font-weight: 700; letter-spacing: 0.26em;
     color: #2176ae; text-indent: 0.26em; margin-top: 2px;
   }
+  /* 開始前カウントダウン（叩くゾーンに重ねて大きく表示） */
+  .tap-countdown {
+    position: absolute; inset: 0; border-radius: 16px;
+    display: none; align-items: center; justify-content: center;
+    pointer-events: none;
+    background: radial-gradient(120% 100% at 50% 40%, rgba(255,255,255,0.72), rgba(234,243,251,0.66));
+  }
+  .tap-countdown.show { display: flex; }
+  .tap-countdown .cd-num {
+    font-family: 'Oswald', sans-serif; font-weight: 700; line-height: 1;
+    font-size: 3.6rem; color: #2176ae; animation: cdPop 0.55s ease-out;
+  }
+  .tap-countdown .cd-go {
+    font-family: 'Oswald', sans-serif; font-weight: 700; line-height: 1;
+    font-size: 2.1rem; letter-spacing: 0.12em; color: #1a6b40; animation: cdGo 0.6s ease-out;
+  }
+  @keyframes cdPop {
+    0% { transform: scale(0.4); opacity: 0; }
+    30% { transform: scale(1.18); opacity: 1; }
+    100% { transform: scale(1); opacity: 1; }
+  }
+  @keyframes cdGo {
+    0% { transform: scale(0.6); opacity: 0; }
+    40% { transform: scale(1.12); opacity: 1; }
+    100% { transform: scale(1); opacity: 1; }
+  }
   #tap-pad.playing .tap-cta { display: none; }
   #tap-pad.playing .tap-zone {
     border-color: #d3dbe6; background: #f4f7fb; box-shadow: inset 0 2px 8px rgba(0,0,0,0.06);
@@ -2475,6 +2501,8 @@
         <div class="tap-zone">
           <div class="tap-verdict" id="tap-verdict">👆</div>
           <div class="tap-cta">タップ</div>
+          <!-- 開始前カウントダウン（クリック音に同期して 1・2・3・4 → スタート！） -->
+          <div class="tap-countdown" id="tap-countdown" aria-hidden="true"></div>
         </div>
         <!-- タイミングメーター（早い◀ 中央=ジャスト 遅い▶） -->
         <div class="tap-meter" id="tap-meter"><div class="tap-meter-center"></div></div>
@@ -5167,6 +5195,7 @@ function resetTapSession() {
   _tapCleanMeasures = 0;
   _tapCombo = 0;
   clearTapNoteColors();
+  clearCountdownVisual();
   const v = document.getElementById('tap-verdict');
   const s = document.getElementById('tap-stats');
   const h = document.getElementById('tap-hint');
@@ -5185,6 +5214,28 @@ function clearTapNoteColors() {
 function colorTapNote(idx, cls) {
   const g = document.getElementById('score-slot-' + idx);
   if (g) { g.classList.remove('tap-perfect', 'tap-good', 'tap-miss'); g.classList.add(cls); }
+}
+
+// 開始前カウントダウンの表示。オーディオ時刻 t にクリック音と同期して数字/スタートを出す。
+// isGo=true は「スタート！」（0.5秒で自動的に消す）。
+function scheduleCountdownVisual(t, label, isGo) {
+  const ctx = getAudioCtx();
+  const delay = Math.max(0, (t - ctx.currentTime) * 1000);
+  setTimeout(() => {
+    const cd = document.getElementById('tap-countdown');
+    if (!cd || !metronomeRunning) return; // 途中で停止したら出さない
+    cd.classList.add('show');
+    cd.innerHTML = '<div class="' + (isGo ? 'cd-go' : 'cd-num') + '">' + label + '</div>';
+    if (isGo) setTimeout(() => {
+      const c = document.getElementById('tap-countdown');
+      if (c) { c.classList.remove('show'); c.innerHTML = ''; }
+    }, 500);
+  }, delay);
+}
+
+function clearCountdownVisual() {
+  const cd = document.getElementById('tap-countdown');
+  if (cd) { cd.classList.remove('show'); cd.innerHTML = ''; }
 }
 
 // タイミングメーターにティックを打つ（offsetSec<0=早い/左、>0=遅い/右）
@@ -5369,6 +5420,7 @@ function scheduler() {
     if (_tapCountInLeft > 0) {
       const cIdx = 4 - _tapCountInLeft;
       scheduleNote(t, cIdx === 0, cIdx);
+      scheduleCountdownVisual(t, String(cIdx + 1), false); // 1・2・3・4 を音に同期して大きく表示
       _tapCountInLeft--;
       nextNoteTime += interval;
       continue;
@@ -5390,6 +5442,7 @@ function scheduler() {
           _tapLoopNo++;
         } else {
           _gameFirstTargetTime = t; // 1周目の開始時刻（これより十分前のタップは判定しない）
+          scheduleCountdownVisual(t, 'スタート！', true); // カウント明けの開始拍で「スタート！」
         }
         _tapLoopStarted = true;
       }
@@ -5608,6 +5661,7 @@ function toggleMetronome() {
     cancelClearTimers(); // 手動停止したのに数秒後「次の問題へ」が発火するのを防ぐ
     const _tp = document.getElementById('tap-pad');
     if (_tp) _tp.classList.remove('playing'); // 待機表示（「タップ」CTA・脈動）に戻す
+    clearCountdownVisual(); // カウントダウン途中で止めたら数字を消す
     // 鳴りっぱなしの読み上げ音（特に長いター）を止める
     if (_readoutPrev) { try { _readoutPrev.src.stop(); } catch(e) {} _readoutPrev = null; }
     // お手本再生の後始末（一時的にONにした読み上げを元へ）
