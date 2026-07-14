@@ -1203,27 +1203,20 @@
     padding: 9px 14px 11px;
     box-sizing: border-box;
   }
-  /* コンボ演出：パッド上部中央にポンと出て素早く消える（判定・メーターに被らない） */
-  .tap-combo-pop {
-    position: absolute; top: 6px; left: 50%; transform: translateX(-50%);
+  /* 連続成功ポップ：パッド上部中央にファッと浮き出て素早く消える（判定・メーターに被らない） */
+  .tap-streak-pop {
+    position: absolute; top: 4px; left: 50%; transform: translateX(-50%);
     font-family: 'Oswald', sans-serif; font-weight: 700; font-size: 1.15rem;
-    color: #e8720c; letter-spacing: 0.04em; pointer-events: none;
+    color: #188a4d; letter-spacing: 0.03em; pointer-events: none;
     opacity: 0; z-index: 3; white-space: nowrap;
   }
-  .tap-combo-pop.pop { animation: comboPop 0.75s ease-out; }
-  @keyframes comboPop {
-    0% { opacity: 0; transform: translateX(-50%) scale(0.5) translateY(6px); }
-    25% { opacity: 1; transform: translateX(-50%) scale(1.15) translateY(0); }
-    60% { opacity: 1; transform: translateX(-50%) scale(1) translateY(0); }
-    100% { opacity: 0; transform: translateX(-50%) scale(1) translateY(-6px); }
+  .tap-streak-pop.pop { animation: streakPop 0.9s ease-out; }
+  @keyframes streakPop {
+    0% { opacity: 0; transform: translateX(-50%) scale(0.5) translateY(8px); }
+    22% { opacity: 1; transform: translateX(-50%) scale(1.16) translateY(0); }
+    62% { opacity: 1; transform: translateX(-50%) scale(1) translateY(0); }
+    100% { opacity: 0; transform: translateX(-50%) scale(1) translateY(-8px); }
   }
-  .combo-toggle {
-    background: none; border: none; padding: 0; margin: 0;
-    font-size: 0.66rem; color: #9298a3; font-weight: 700; cursor: pointer;
-    letter-spacing: 0.02em; text-decoration: underline; text-underline-offset: 2px;
-  }
-  .combo-toggle.off { color: #c0c4cd; }
-  .tap-note-sep { color: #d0d3da; margin: 0 4px; }
   /* 叩くゾーン：大きな押しボタン風。ここが「叩くところ」と一目でわかるように */
   .tap-zone {
     position: relative;
@@ -2518,8 +2511,8 @@
 
       <!-- タップ練習パッド（タップ練習モードON時のみ表示） -->
       <div id="tap-pad" onpointerdown="tapPadHit(event)" oncontextmenu="return false">
-        <!-- コンボ演出（◎連続で「🔥N COMBO」がポンと出て消える。拍を邪魔しない位置） -->
-        <div class="tap-combo-pop" id="tap-combo-pop" aria-hidden="true"></div>
+        <!-- 連続成功ポップ（1小節キレイに叩けるたび「N小節連続成功！」がファッと浮き出る） -->
+        <div class="tap-streak-pop" id="tap-streak-pop" aria-hidden="true"></div>
         <div class="tap-stats" id="tap-stats"></div>
         <!-- 叩くところ：大きな押しボタン風のゾーン。中央に判定（👆→◎○×）＋「タップ」表示 -->
         <div class="tap-zone">
@@ -2553,13 +2546,7 @@
           <button class="tap-tune-btn" onpointerdown="event.stopPropagation()" onclick="nudgeCalib(0.02,event)"
             title="「早い」と出がちなとき">遅め ＋</button>
         </div>
-        <div class="tap-note">
-          PC はスペースキーでもタップできます
-          <span class="tap-note-sep">・</span>
-          <button class="combo-toggle" id="combo-toggle"
-            onpointerdown="event.stopPropagation()" onclick="toggleComboSound(event)"
-            title="コンボが続いたときの効果音を切り替えます">🔥 コンボ音: ON</button>
-        </div>
+        <div class="tap-note">PC はスペースキーでもタップできます</div>
       </div>
       <div class="live-bpm-row" style="margin-top:8px; margin-bottom:10px;">
         <div class="bpm-inline" title="数字をダブルクリック（ダブルタップ）で直接入力">
@@ -5207,7 +5194,6 @@ function setTapMode(val) {
   resetTapSession();
   if (tapModeOn) {
     updateCalibInfo();
-    updateComboToggle();
     loadEffectBuffers();
     // 初プレイ記録：誘目パルスを止める
     lsSet('tsg-rhythm-played', '1');
@@ -5227,7 +5213,7 @@ function resetTapSession() {
   _tapCombo = 0;
   clearTapNoteColors();
   clearCountdownVisual();
-  clearComboPop();
+  clearStreakPop();
   const v = document.getElementById('tap-verdict');
   const s = document.getElementById('tap-stats');
   const h = document.getElementById('tap-hint');
@@ -5270,53 +5256,19 @@ function clearCountdownVisual() {
   if (cd) { cd.classList.remove('show'); cd.innerHTML = ''; }
 }
 
-// ===== コンボ演出（◎連続時のご褒美。視覚は常時／音はON/OFF可） =====
-let comboSoundOn = (localStorage.getItem('tsg-rhythm-combo-sound') !== '0'); // 既定ON
-
-// コンボが伸びるほど音程が上がる短いピン（拍のクリックと音色・音量を分けて邪魔しにくく）
-function playComboSound(combo) {
-  if (!comboSoundOn || !masterOut) return;
-  const ctx = getAudioCtx();
-  const t = ctx.currentTime;
-  const osc = ctx.createOscillator();
-  const g = ctx.createGain();
-  osc.type = 'triangle';
-  const step = Math.min(combo - 3, 12);      // 3から段階的に、上限で頭打ち
-  osc.frequency.value = 660 + step * 46;     // 660〜1212Hz
-  g.gain.setValueAtTime(0.0001, t);
-  g.gain.exponentialRampToValueAtTime(0.055, t + 0.008); // 控えめ（master 2.8倍込み）
-  g.gain.exponentialRampToValueAtTime(0.0001, t + 0.15);
-  osc.connect(g); g.connect(masterOut);
-  osc.start(t); osc.stop(t + 0.17);
-}
-
-// 「🔥 N COMBO」をポンと出す（再発火のためリフローでアニメを打ち直す）
-function showComboPop(n) {
-  const el = document.getElementById('tap-combo-pop');
+// ===== 連続成功ポップ（1小節キレイに叩けるたび「N小節連続成功！」を浮き出す。音なし・視覚のみ） =====
+function showStreakPop(text) {
+  const el = document.getElementById('tap-streak-pop');
   if (!el) return;
-  el.textContent = '🔥 ' + n + ' COMBO';
+  el.textContent = text;
   el.classList.remove('pop');
-  void el.offsetWidth;
+  void el.offsetWidth; // リフローでアニメを打ち直す（連続発火に対応）
   el.classList.add('pop');
 }
 
-function clearComboPop() {
-  const el = document.getElementById('tap-combo-pop');
+function clearStreakPop() {
+  const el = document.getElementById('tap-streak-pop');
   if (el) { el.classList.remove('pop'); el.textContent = ''; }
-}
-
-function toggleComboSound(e) {
-  if (e && e.stopPropagation) e.stopPropagation();
-  comboSoundOn = !comboSoundOn;
-  lsSet('tsg-rhythm-combo-sound', comboSoundOn ? '1' : '0');
-  updateComboToggle();
-}
-
-function updateComboToggle() {
-  const b = document.getElementById('combo-toggle');
-  if (!b) return;
-  b.textContent = '🔥 コンボ音: ' + (comboSoundOn ? 'ON' : 'OFF');
-  b.classList.toggle('off', !comboSoundOn);
 }
 
 // タイミングメーターにティックを打つ（offsetSec<0=早い/左、>0=遅い/右）
@@ -5393,7 +5345,6 @@ function judgeTap(tapTime) {
     best.verdict = 'tap-perfect';
     _tapCombo++;
     showTapVerdict('v-perfect', '◎', msText); // ジャストでもズレmsを表示
-    if (_tapCombo >= 3) { showComboPop(_tapCombo); playComboSound(_tapCombo); } // 3連続からご褒美
   } else if (bestAbs <= 0.13) {
     best.verdict = 'tap-good';
     _tapCombo = 0;
@@ -5461,18 +5412,22 @@ function finalizeTapLoop(loopNo, boundaryTime) {
         markSlotCleared(slotIdx2);
         showTapVerdict('v-perfect', '🎉 クリア！', `連続${CLEAR_MEASURES}小節ノーミス達成！`);
         showToast('🎉「' + (metroNames[slotIdx2] || 'このパターン') + '」をクリアしました！');
-        if (s) s.textContent = `◎${perfect}　○${good}　×0　─　${score}点　⭐クリア済み`;
+        if (s) s.textContent = `◎${perfect} ○${good} ×0 · ${score}点  ⭐クリア済み`;
         clearTapNoteColors();
         return;
       }
-      const streakInfo = alreadyCleared ? '⭐クリア済み'
-        : (baseBpm === null) ? 'クリア判定対象外（ステージの問題で⭐が狙えます）'
-        : (bpm < baseBpm) ? `基準テンポ${baseBpm}未満（クリア判定外）`
-        : `連続クリーン ${Math.min(_tapCleanMeasures, CLEAR_MEASURES)}/${CLEAR_MEASURES}小節`;
-      if (s) s.textContent = `◎${perfect}　○${good}　×0　─　${score}点　${streakInfo}`;
+      // 連続成功はポップで祝う（2小節以上・基準テンポ以上のとき、ファッと浮き出す）
+      if (tempoOK && _tapCleanMeasures >= 2) {
+        showStreakPop(`${_tapCleanMeasures}小節連続成功！`);
+      }
+      // 上部の固定表示は短く：カウントのみ。特記事項だけ短い一言を添える（折り返さない長さ）
+      let suffix = '';
+      if (alreadyCleared) suffix = '  ⭐クリア済み';
+      else if (baseBpm !== null && bpm < baseBpm) suffix = `  ⚡${baseBpm}以上で⭐`;
+      if (s) s.textContent = `◎${perfect} ○${good} ×0 · ${score}点${suffix}`;
     } else {
       _tapCleanMeasures = 0;
-      if (s) s.textContent = `◎${perfect}　○${good}　×${miss}　─　${score}点`;
+      if (s) s.textContent = `◎${perfect} ○${good} ×${miss} · ${score}点`;
     }
   }
   // 表示リセット（次の周ですでに判定済みの音符の色は残す）
