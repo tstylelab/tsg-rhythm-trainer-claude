@@ -2695,6 +2695,7 @@
             <option value="stage4">ステージ4 のばす音符</option>
             <option value="stage5">ステージ5 タイ（音をつなぐ）</option>
             <option value="stage6">ステージ6 16分音符 入門</option>
+            <option value="stage7">ステージ7 実験（シャッフル・3拍子・連符）</option>
             <!-- 旧カテゴリ(8th-basic等)は選択肢から削除。データは共有URL・保存データ互換のため残置 -->
           </select>
         </div>
@@ -6607,7 +6608,7 @@ function mkP(name, bpm, yomi, groove, beatsPerMeasure) {
   groove = groove || 'eighth';
   const bpMeas = beatsPerMeasure || 4; // 拍子の分子（3なら3/4）。省略時は4/4
   const spb = (groove === 'triplet' || groove === 'twelve8') ? 3 : groove === 'sextuplet' ? 6
-            : (groove === 'sixteenth' ? 4 : 2); // 1拍あたりのスロット数（12/8は付点4分拍を3分割）
+            : ((groove === 'sixteenth' || groove === 'sixteenth-shuffle') ? 4 : 2); // 1拍あたりのスロット数（12/8は付点4分拍を3分割、16分シャッフルは16分刻み）
   const perMeasure = spb * bpMeas;
   const measures = yomi.split('|').map(m => m.replace(/\s+/g, ''));
   const beats = measures.length * bpMeas;
@@ -6633,7 +6634,7 @@ function mkP(name, bpm, yomi, groove, beatsPerMeasure) {
     if (groove === 'twelve8') { abcMeasures.push(_mk12_8Abc(slots)); return; }
     let abc = '', u = 0;
     const lenTok = (ch, n) => {
-      if (groove === 'sixteenth') {
+      if (groove === 'sixteenth' || groove === 'sixteenth-shuffle') { // 16分刻み（L:1/8基準で /）
         if (n === 1) return ch + '/';
         if (n % 2 === 0) return ch + (n / 2 === 1 ? '' : n / 2);
         return ch + n + '/2';
@@ -6783,6 +6784,21 @@ Object.assign(RHYTHM_CATEGORIES, {
     mkP('タンタタ',          54, 'タンタタタンタタタンタタタンタタ', 'sixteenth'),
     mkP('総合チャレンジA',   52, 'タアタタタタタアタアアタタタタア', 'sixteenth'),
     mkP('総合チャレンジB',   52, 'タタタアタアアタンタタタタアアア', 'sixteenth'),
+  ],
+  // 実験ステージ（新リズムの動作確認用。8分/16分シャッフル・3/4・12/8・三連符・6連符）
+  'stage7': [
+    mkP('8分シャッフル 全部',   90, 'タタタタタタタタ',                 'shuffle'),
+    mkP('8分シャッフル リフ',   90, 'タタタンタタタン',                 'shuffle'),
+    mkP('16分シャッフル 全部',  72, 'タタタタタタタタタタタタタタタタ', 'sixteenth-shuffle'),
+    mkP('16分シャッフル リフ',  70, 'タンタタタンタタタンタタタンタタ', 'sixteenth-shuffle'),
+    mkP('3/4 四分音符',         88, 'タアタアタア',                     'eighth', 3),
+    mkP('3/4 八分入り',         86, 'タタタアタタ',                     'eighth', 3),
+    mkP('12/8 基本',            60, 'タタタタタタタタタタタタ',         'twelve8'),
+    mkP('12/8 シャッフル風',    58, 'タアタタアタタアタタアタ',         'twelve8'),
+    mkP('三連符 基本',          76, 'タタタタタタタタタタタタ',         'triplet'),
+    mkP('三連符 4分混じり',     74, 'タアアタタタタアアタタタ',         'triplet'),
+    mkP('6連符 基本',           54, 'タタタタタタタタタタタタタタタタタタタタタタタタ', 'sextuplet'),
+    mkP('6連符 4分混じり',      52, 'タアアアアアタタタタタタタアアアアアタタタタタタ', 'sextuplet'),
   ],
 });
 
