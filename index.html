@@ -3162,7 +3162,8 @@ function makeMetroSlotBtn(i) {
   // 拍子ラベルは小節単位で導出（autoSaveMetroSlotと同ロジック。2小節=8拍でも「8/4」とは書かない）
   const slotMb = slot8thBase ? beatsVal
     : (beatsVal % 4 === 0) ? 4 : (beatsVal % 3 === 0) ? 3 : beatsVal;
-  const timeSigLabel = slot8thBase ? `${beatsVal}/8`
+  const timeSigLabel = metroGroovesArr[i] === 'twelve8' ? '12/8'
+    : slot8thBase ? `${beatsVal}/8`
     : (slotMb !== 4 ? `${slotMb}/4` : '');
   const bpmDisplay = metroSlots[i] !== null
     ? (timeSigLabel ? `${bpmVal}<span style="font-size:0.6rem;opacity:0.7"> ${timeSigLabel}</span>` : bpmVal)
@@ -3300,7 +3301,8 @@ function autoSaveMetroSlot() {
   const bpmLbl = document.getElementById('mslot-bpm-' + metroSelectedSlot);
   if (bpmLbl) {
     const mb = measureBeats();
-    const tsl = is8thBase ? `${beats}/8`
+    const tsl = groove === 'twelve8' ? '12/8'
+      : is8thBase ? `${beats}/8`
       : (mb !== 4 ? `${mb}/4` : ''); // 4/4は無表示（2小節=8拍でも「8/4」とは書かない）
     bpmLbl.innerHTML = tsl
       ? `${bpm}<span style="font-size:0.6rem;opacity:0.7"> ${tsl}</span>`
@@ -3472,7 +3474,7 @@ function loadMetroSetlistFile(event) {
         return;
       }
       if (metronomeRunning) toggleMetronome(); // 再生中に中身が差し替わると判定・保存が壊れるため停止
-      const GROOVES = ['normal','eighth','shuffle','sixteenth','sixteenth-shuffle','triplet','sextuplet'];
+      const GROOVES = ['normal','eighth','shuffle','sixteenth','sixteenth-shuffle','triplet','sextuplet','twelve8'];
       const SOUNDS  = ['beep','wood','hihat','voice'];
       const n = [12,24,36,48].includes(data.slotCount) ? data.slotCount : 24;
       metroSlotCount    = n;
@@ -3616,7 +3618,7 @@ function decodeSetlistFromHash() {
       const btv = Number(slot.bt);
       metroBeatsArr[idx]     = (Number.isFinite(btv) && btv >= 1 && btv <= 16) ? Math.round(btv) : 4;
       metroIs8thBaseArr[idx] = !!slot['8'];
-      metroGroovesArr[idx]   = ['normal','eighth','sixteenth','shuffle','sixteenth-shuffle','triplet','sextuplet'].includes(slot.g) ? slot.g : 'normal';
+      metroGroovesArr[idx]   = ['normal','eighth','sixteenth','shuffle','sixteenth-shuffle','triplet','sextuplet','twelve8'].includes(slot.g) ? slot.g : 'normal';
       metroSoundsArr[idx]    = ['beep','wood','hihat','voice'].includes(slot.sn) ? slot.sn : 'beep';
       metroAllAccentArr[idx] = !!slot.aa;
       metroShowPickArr[idx]  = !!slot.sp;
@@ -3914,6 +3916,10 @@ function renderScoreView() {
   const scoreMeasures = scoreAbc.split('|').map(m => m.trim()).filter(m => m.length > 0);
   function detectRowSubs(measureAbc) {
     if (!measureAbc) return globalSubs;
+    if (groove === 'twelve8') {
+      // 12/8: 裸の8分（数字なしのc/z/x）があれば3分割表示、丸ごと付点4分(c3)のみなら0
+      return /[a-gA-GzZ](?![0-9])/.test(measureAbc) ? globalSubs : 0;
+    }
     if (/\(\d/.test(measureAbc)) return globalSubs; // 連符入りの小節は現在グルーヴの分割で表示
     if (/[a-gA-GzZ]\//.test(measureAbc)) return 3;  // 十六分音符あり
     if (/[a-gA-GzZ](?!\d)/.test(measureAbc)) return 1; // 八分音符あり
@@ -3942,7 +3948,9 @@ function renderScoreView() {
   const pickY    = stemTop - pickSymH - 3;
   const mL = 52, mR = 20;
   const slashSX = 5;
-  const denom = is8thBase ? 8 : 4;
+  const isTwelve8 = groove === 'twelve8';
+  const denom = (is8thBase || isTwelve8) ? 8 : 4;
+  const tsNum = isTwelve8 ? 12 : beatsPerRow; // 12/8の分子は12（拍数=4とは別）
 
   // スクロールコンテナ構築
   container.innerHTML = '';
@@ -3982,8 +3990,8 @@ function renderScoreView() {
     } else {
       svg += `<line x1="${W-mR+5}" y1="${noteY-14}" x2="${W-mR+5}" y2="${noteY+14}" stroke="#333" stroke-width="1.5"/>`;
     }
-    // 拍子記号は毎行表示（分子=1小節の拍数、分母=4分/8分ベース）
-    svg += `<text x="22" y="${noteY-2}" text-anchor="middle" font-family="Oswald,sans-serif" font-size="20" font-weight="700" fill="#222">${beatsPerRow}</text>`;
+    // 拍子記号は毎行表示（分子=1小節の拍数、分母=4分/8分ベース。12/8は12/8）
+    svg += `<text x="22" y="${noteY-2}" text-anchor="middle" font-family="Oswald,sans-serif" font-size="20" font-weight="700" fill="#222">${tsNum}</text>`;
     svg += `<text x="22" y="${noteY+16}" text-anchor="middle" font-family="Oswald,sans-serif" font-size="20" font-weight="700" fill="#222">${denom}</text>`;
 
     // ── 正解タイミング表に基づき、拍ごとに音価をまとめて描画 ──
@@ -4069,7 +4077,8 @@ function renderScoreView() {
         svg += `<line x1="${firstStemX + slashSX}" y1="${by}" x2="${lastStemX + slashSX}" y2="${by}" stroke="#1a1a2e" stroke-width="4.5"/>`;
       }
       // 連符の数字「3」「6」（連符に分割された拍にだけ付ける。丸ごと1拍の音・休符には不要）
-      if ((subs === 2 || subs === 5) && !(events.length === 1 && events[0].isFullBeat)) {
+      // 12/8は複合拍子で連符ではないため数字を出さない（8分3個が自然な分割）
+      if (!isTwelve8 && (subs === 2 || subs === 5) && !(events.length === 1 && events[0].isFullBeat)) {
         const cx = (xs[g0] + xs[g0 + unitCount - 1]) / 2 + slashSX;
         const digitY = showPick ? pickY - 3 : stemTop - 4; // ピック記号と重ならない高さに
         svg += `<text x="${cx.toFixed(1)}" y="${digitY}" text-anchor="middle" font-family="Oswald,sans-serif" font-size="11" font-style="italic" font-weight="700" fill="#1a1a2e">${subs === 2 ? 3 : 6}</text>`;
@@ -4291,6 +4300,7 @@ function getSubsPerBeat() {
   if (groove === 'sixteenth' || groove === 'sixteenth-shuffle') return 3;
   if (groove === 'triplet') return 2;   // 三連符: 1拍=3スロット
   if (groove === 'sextuplet') return 5; // 6連符: 1拍=6スロット
+  if (groove === 'twelve8') return 2;   // 12/8: 各拍（付点4分）を3等分＝3スロット（三連と同じ刻み）
   return 0;
 }
 
@@ -4306,6 +4316,7 @@ function measureBeats() {
 
 // ABC譜面の拍子ヘッダ（M:行）。現在の拍子から導出する
 function abcMeterHeader() {
+  if (groove === 'twelve8') return 'M:12/8'; // 複合拍子（1小節=4付点4分拍）
   return is8thBase ? `M:${beats}/8` : `M:${measureBeats()}/4`;
 }
 
@@ -4511,7 +4522,8 @@ function getTimingTable() {
   const total = beats * spb;
   let types = null;
   if (abc) {
-    const unitsPerBeat = is8thBase ? 1 : 2; // L:1/8 → 4/4は1拍=2単位、6/8・7/8は1拍=1単位
+    // L:1/8 → 4/4は1拍=2単位、6/8・7/8は1拍=1単位、12/8は1拍(付点4分)=3単位
+    const unitsPerBeat = is8thBase ? 1 : (groove === 'twelve8') ? 3 : 2;
     types = parseAbcToSlotTypes(abc, total, spb / unitsPerBeat);
   }
   _ttTypes = types || slotTypesFromMutes(spb);
@@ -4578,6 +4590,7 @@ function getSubOffsets() {
   if (groove === 'sixteenth-shuffle') return [0.5 * shuffleRatio, 0.5, 0.5 + 0.5 * shuffleRatio];
   if (groove === 'triplet')           return [1 / 3, 2 / 3]; // 三連符（均等3分割・shuffleRatio非依存）
   if (groove === 'sextuplet')         return [1 / 6, 2 / 6, 3 / 6, 4 / 6, 5 / 6]; // 6連符（均等6分割）
+  if (groove === 'twelve8')           return [1 / 3, 2 / 3]; // 12/8: 付点4分拍を3等分（三連と同じ）
   return [];
 }
 
@@ -4884,9 +4897,10 @@ function renderCheckMode() {
     h.style.cssText = 'margin:20px 0 8px;font-size:0.95rem;color:#14547f;border-bottom:2px solid #2176ae;padding-bottom:3px;';
     wrap.appendChild(h);
     cat.forEach((p, i) => {
-      const spb = (p.groove === 'triplet') ? 3 : (p.groove === 'sextuplet') ? 6
+      const spb = (p.groove === 'triplet' || p.groove === 'twelve8') ? 3 : (p.groove === 'sextuplet') ? 6
                 : (p.groove === 'sixteenth') ? 4 : 2;
-      const types = parseAbcToSlotTypes(p.abc, p.beats * spb, spb / 2) || [];
+      const upb = (p.groove === 'twelve8') ? 3 : 2; // 12/8は1拍=3単位、他は2単位
+      const types = parseAbcToSlotTypes(p.abc, p.beats * spb, spb / upb) || [];
       const yomi = types.map(t => KANA[t] || '?').join('');
       const row = document.createElement('div');
       row.style.cssText = 'margin-bottom:12px;padding:8px 10px;border:1px solid #e0e4ea;border-radius:8px;';
@@ -4902,7 +4916,8 @@ function renderCheckMode() {
         // 拍子はパターン定義から導出（グローバル状態に依存しない）
         const pmb = p.is8thBase ? p.beats
           : (p.beats % 4 === 0) ? 4 : (p.beats % 3 === 0) ? 3 : p.beats;
-        const pMeter = p.is8thBase ? `M:${p.beats}/8` : `M:${pmb}/4`;
+        const pMeter = p.groove === 'twelve8' ? 'M:12/8'
+          : p.is8thBase ? `M:${p.beats}/8` : `M:${pmb}/4`;
         ABCJS.renderAbc(abcDiv,
           `X:1\n${pMeter}\nL:1/8\n%%stafflines 1\nK:perc\n${p.abc}|`,
           { staffwidth: 640, add_classes: false, paddingtop: 4, paddingbottom: 4, paddingleft: 10, paddingright: 10 });
@@ -6533,11 +6548,66 @@ function _mkTupletAbc(slots, spb) {
   return parts.join(' ');
 }
 
+// 12/8（複合拍子）用のABC生成。三連の刻みと同じスロット構造だが、連符括弧は付けず
+// 素の8分音符で書く（12/8では8分3個/拍が自然な分割）。丸ごと拍＝付点4分(c3)、
+// 連続タイの丸ごと拍はまとめて長い音価に、拍またぎは拍境界でタイ分割。M:12/8 L:1/8 前提。
+function _mk12_8Abc(slots) {
+  const spb = 3;
+  const nBeats = Math.round(slots.length / spb);
+  const beatEvents = [];
+  for (let b = 0; b < nBeats; b++) beatEvents.push([]);
+  let u = 0;
+  while (u < slots.length) {
+    const c = slots[u];
+    let ch, d;
+    if (c === 'タ' || c === 'ツ') {
+      ch = (c === 'ツ') ? 'x' : 'c';
+      d = 1; while (u + d < slots.length && slots[u + d] === 'ア') d++;
+    } else if (c === 'ン') {
+      ch = 'z';
+      d = 1; while (u + d < slots.length && slots[u + d] === 'ン') d++;
+    } else { console.warn('mkP 不正な文字(12/8):', c); u++; continue; }
+    let pos = u, remain = d, first = true;
+    while (remain > 0) {
+      const b = Math.floor(pos / spb);
+      const take = Math.min(remain, (b + 1) * spb - pos);
+      beatEvents[b].push({ ch, len: take, tieIn: !first && ch !== 'z',
+                           tieOut: ch !== 'z' && remain - take > 0 });
+      pos += take; remain -= take; first = false;
+    }
+    u += d;
+  }
+  const parts = [];
+  let b = 0;
+  while (b < nBeats) {
+    const evs = beatEvents[b];
+    const whole = evs.length === 1 && evs[0].len === spb; // 丸ごと1拍＝付点4分
+    if (whole) {
+      const e = evs[0];
+      if (e.ch !== 'z' && !e.tieIn) {
+        let k = 1;
+        while (b + k < nBeats && beatEvents[b + k].length === 1 &&
+               beatEvents[b + k][0].len === spb && beatEvents[b + k][0].ch === e.ch &&
+               beatEvents[b + k][0].tieIn) k++;
+        parts.push(e.ch + (3 * k) + (beatEvents[b + k - 1][0].tieOut ? '-' : ''));
+        b += k; continue;
+      }
+      parts.push(e.ch + '3' + (e.tieOut ? '-' : '')); // 丸ごと休符/タイ受け＝付点4分
+      b++; continue;
+    }
+    // 分割された拍: 素の8分ベーストークン（連符括弧なし。abcjsが12/8で自動連桁）
+    const toks = evs.map(e => e.ch + (e.len === 1 ? '' : e.len) + (e.tieOut ? '-' : ''));
+    parts.push(toks.join(''));
+    b++;
+  }
+  return parts.join(' ');
+}
+
 function mkP(name, bpm, yomi, groove, beatsPerMeasure) {
   groove = groove || 'eighth';
   const bpMeas = beatsPerMeasure || 4; // 拍子の分子（3なら3/4）。省略時は4/4
-  const spb = groove === 'triplet' ? 3 : groove === 'sextuplet' ? 6
-            : (groove === 'sixteenth' ? 4 : 2); // 1拍あたりのスロット数
+  const spb = (groove === 'triplet' || groove === 'twelve8') ? 3 : groove === 'sextuplet' ? 6
+            : (groove === 'sixteenth' ? 4 : 2); // 1拍あたりのスロット数（12/8は付点4分拍を3分割）
   const perMeasure = spb * bpMeas;
   const measures = yomi.split('|').map(m => m.replace(/\s+/g, ''));
   const beats = measures.length * bpMeas;
@@ -6560,6 +6630,7 @@ function mkP(name, bpm, yomi, groove, beatsPerMeasure) {
       abcMeasures.push(_mkTupletAbc(slots, spb));
       return;
     }
+    if (groove === 'twelve8') { abcMeasures.push(_mk12_8Abc(slots)); return; }
     let abc = '', u = 0;
     const lenTok = (ch, n) => {
       if (groove === 'sixteenth') {
