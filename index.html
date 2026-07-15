@@ -3472,7 +3472,7 @@ function loadMetroSetlistFile(event) {
         return;
       }
       if (metronomeRunning) toggleMetronome(); // 再生中に中身が差し替わると判定・保存が壊れるため停止
-      const GROOVES = ['normal','eighth','shuffle','sixteenth','sixteenth-shuffle','up'];
+      const GROOVES = ['normal','eighth','shuffle','sixteenth','sixteenth-shuffle','triplet'];
       const SOUNDS  = ['beep','wood','hihat','voice'];
       const n = [12,24,36,48].includes(data.slotCount) ? data.slotCount : 24;
       metroSlotCount    = n;
@@ -3616,7 +3616,7 @@ function decodeSetlistFromHash() {
       const btv = Number(slot.bt);
       metroBeatsArr[idx]     = (Number.isFinite(btv) && btv >= 1 && btv <= 16) ? Math.round(btv) : 4;
       metroIs8thBaseArr[idx] = !!slot['8'];
-      metroGroovesArr[idx]   = ['normal','eighth','sixteenth','shuffle','sixteenth-shuffle'].includes(slot.g) ? slot.g : 'normal';
+      metroGroovesArr[idx]   = ['normal','eighth','sixteenth','shuffle','sixteenth-shuffle','triplet'].includes(slot.g) ? slot.g : 'normal';
       metroSoundsArr[idx]    = ['beep','wood','hihat','voice'].includes(slot.sn) ? slot.sn : 'beep';
       metroAllAccentArr[idx] = !!slot.aa;
       metroShowPickArr[idx]  = !!slot.sp;
@@ -3780,6 +3780,7 @@ function getPickDir(isMainBeat, subIdx) {
   if (isMainBeat) return 'down';
   if (groove === 'eighth' || groove === 'shuffle') return 'up';
   // sixteenth / sixteenth-shuffle: e=up(0) and=down(1) a=up(2)
+  // triplet: sub0=up sub1=down（拍頭downと合わせてD-U-Dの交互）
   return subIdx % 2 === 0 ? 'up' : 'down';
 }
 
@@ -3913,6 +3914,7 @@ function renderScoreView() {
   const scoreMeasures = scoreAbc.split('|').map(m => m.trim()).filter(m => m.length > 0);
   function detectRowSubs(measureAbc) {
     if (!measureAbc) return globalSubs;
+    if (/\(\d/.test(measureAbc)) return globalSubs; // 連符入りの小節は現在グルーヴの分割で表示
     if (/[a-gA-GzZ]\//.test(measureAbc)) return 3;  // 十六分音符あり
     if (/[a-gA-GzZ](?!\d)/.test(measureAbc)) return 1; // 八分音符あり
     return 0; // 四分音符のみ
@@ -4053,14 +4055,23 @@ function renderScoreView() {
       }
 
       const stems = events.filter(ev => ev.kind !== 'rest');
-      const beatHasBeam = subs >= 1 && !(events.length === 1 && events[0].isFullBeat) && stems.length > 0;
-      const firstStemX = stems.length ? stems[0].x : 0;
-      const lastStemX  = stems.length ? stems[stems.length - 1].x : 0;
+      // ビームに参加できる符幹＝旗を持つ音価のみ。三連の「連符4分」（dur=2、beams=0）は
+      // 素の符幹（4分の見た目）にして、隣の3連8分とはビームで繋がない
+      const beamable = stems.filter(ev => ev.beams >= 1);
+      const beatHasBeam = subs >= 1 && !(events.length === 1 && events[0].isFullBeat) && beamable.length > 0;
+      const firstStemX = beamable.length ? beamable[0].x : 0;
+      const lastStemX  = beamable.length ? beamable[beamable.length - 1].x : 0;
 
       // 1本目のビーム（最初の符幹から最後の符幹まで。休符の上や音符の先まで伸ばさない）
-      if (beatHasBeam && stems.length >= 2) {
+      if (beatHasBeam && beamable.length >= 2) {
         const by = stemTop + 1;
         svg += `<line x1="${firstStemX + slashSX}" y1="${by}" x2="${lastStemX + slashSX}" y2="${by}" stroke="#1a1a2e" stroke-width="4.5"/>`;
+      }
+      // 三連符の「3」（3連に分割された拍にだけ付ける。丸ごと1拍の音・休符には不要）
+      if (subs === 2 && !(events.length === 1 && events[0].isFullBeat)) {
+        const cx = (xs[g0] + xs[g0 + unitCount - 1]) / 2 + slashSX;
+        const digitY = showPick ? pickY - 3 : stemTop - 4; // ピック記号と重ならない高さに
+        svg += `<text x="${cx.toFixed(1)}" y="${digitY}" text-anchor="middle" font-family="Oswald,sans-serif" font-size="11" font-style="italic" font-weight="700" fill="#1a1a2e">3</text>`;
       }
       // 2本目のビーム（16分音符の区間のみ。隣接する16分同士はつなぎ、孤立はスタブ）
       if (beatHasBeam && stems.length >= 2 && unitBeams >= 2) {
@@ -4093,6 +4104,7 @@ function renderScoreView() {
           if (beatHasBeam && stems.length >= 2 && x > firstStemX && x < lastStemX)
             svg += `<line x1="${x+slashSX}" y1="${noteY-10}" x2="${x+slashSX}" y2="${stemTop}" stroke="${col}" stroke-width="1.5" opacity="0.15"/>`;
           const restBeams = ev.isFullBeat ? (is8thBase ? 1 : 0)
+                          : (subs === 2 && ev.dur === 2) ? 0 // 三連の2/3拍休符は4分休符の見た目で
                           : (ev.dur === 1 ? unitBeams : Math.max(1, unitBeams - 1));
           if (restBeams === 0)      svg += restSymbolQuarter(x, noteY, col);
           else if (restBeams === 1) svg += restSymbolEighth(x, noteY, col);
@@ -4106,7 +4118,7 @@ function renderScoreView() {
           }
           // 拍内に符幹が1本だけ（休符＋単独音符）の場合はビームの代わりに旗で描く
           // （8分=旗1枚、16分=旗2枚）
-          if (beatHasBeam && stems.length === 1 && !ev.isFullBeat) {
+          if (beatHasBeam && beamable.length === 1 && ev.beams >= 1 && !ev.isFullBeat) {
             const fx = x + slashSX;
             for (let fl = 0; fl < ev.beams; fl++) {
               const fy = stemTop + fl * 7;
@@ -4276,6 +4288,7 @@ function getSubsPerBeat() {
   }
   if (groove === 'eighth' || groove === 'shuffle') return 1;
   if (groove === 'sixteenth' || groove === 'sixteenth-shuffle') return 3;
+  if (groove === 'triplet') return 2; // 三連符: 1拍=3スロット
   return 0;
 }
 
@@ -4503,21 +4516,35 @@ function getTimingTable() {
   return _ttTypes;
 }
 
-// ABC文字列（c=音符 / z=休符 / x=ブラッシング、数字=単位長、/=半分）→ スロット種別の配列
+// ABC文字列（c=音符 / z=休符 / x=ブラッシング、数字=単位長、/=半分）→ スロット種別の配列。
+// 連符マーカー「(3」「(3:2:2」等に対応: (p:q:r ＝ p個分の音価をq個分の時間で、次のr要素に適用。
+// グループ内の音価は q/p 倍で読む（三連(3:2なら 1公称単位=1スロット。6連(6:2も同式で対応可）。
 function parseAbcToSlotTypes(abc, totalSlots, slotsPerUnit) {
   const s = abc.replace(/\|/g, '').replace(/\s+/g, '');
-  const re = /([czx])([0-9]*)(?:\/([0-9]*))?/g;
+  const re = /\((\d+)(?::(\d+))?(?::(\d+))?|([czx])([0-9]*)(?:\/([0-9]*))?/g;
   const types = [];
-  let m;
+  let m, nextTied = false, tupletLeft = 0, tupletSPU = slotsPerUnit;
   while ((m = re.exec(s)) !== null && types.length < totalSlots) {
+    if (m[1] !== undefined) {
+      // 連符マーカー。r省略時はp個（休符もr個に数える。mkP側も同じ数え方で出力する）
+      const p = parseInt(m[1], 10);
+      const q = m[2] ? parseInt(m[2], 10) : 2; // (3・(6 の標準デフォルトは「2個分の時間」
+      tupletLeft = m[3] ? parseInt(m[3], 10) : p;
+      tupletSPU = slotsPerUnit * q / p;
+      continue; // マーカー自体はスロットを消費しない（直前のタイ状態は保持される）
+    }
     // 直前がタイ(-)なら、この音符は前の音符からの継続 → 頭を叩き直さない(sustain)
-    const tied = m.index > 0 && s[m.index - 1] === '-';
-    const units = m[2] ? parseInt(m[2], 10) : 1;
-    const denom = m[3] !== undefined ? (m[3] ? parseInt(m[3], 10) : 2) : 1;
-    const slots = Math.max(1, Math.round(units * slotsPerUnit / denom));
+    // nextTied は「c2- (3c…」のように連符マーカーを挟んだタイを次の音符へ届けるためのフラグ
+    const tied = nextTied || (m.index > 0 && s[m.index - 1] === '-');
+    nextTied = s[m.index + m[0].length] === '-';
+    const units = m[5] ? parseInt(m[5], 10) : 1;
+    const denom = m[6] !== undefined ? (m[6] ? parseInt(m[6], 10) : 2) : 1;
+    const spu = tupletLeft > 0 ? tupletSPU : slotsPerUnit;
+    if (tupletLeft > 0) tupletLeft--;
+    const slots = Math.max(1, Math.round(units * spu / denom));
     for (let k = 0; k < slots && types.length < totalSlots; k++) {
-      if (m[1] === 'z')      types.push('rest');
-      else if (m[1] === 'x') types.push((k === 0 && !tied) ? 'brush' : 'rest');
+      if (m[4] === 'z')      types.push('rest');
+      else if (m[4] === 'x') types.push((k === 0 && !tied) ? 'brush' : 'rest');
       else                   types.push((k === 0 && !tied) ? 'hit' : 'sustain');
     }
   }
@@ -4547,6 +4574,7 @@ function getSubOffsets() {
   if (groove === 'shuffle')           return [shuffleRatio];
   if (groove === 'sixteenth')         return [0.25, 0.5, 0.75];
   if (groove === 'sixteenth-shuffle') return [0.5 * shuffleRatio, 0.5, 0.5 + 0.5 * shuffleRatio];
+  if (groove === 'triplet')           return [1 / 3, 2 / 3]; // 三連符（均等3分割・shuffleRatio非依存）
   return [];
 }
 
@@ -4853,7 +4881,7 @@ function renderCheckMode() {
     h.style.cssText = 'margin:20px 0 8px;font-size:0.95rem;color:#14547f;border-bottom:2px solid #2176ae;padding-bottom:3px;';
     wrap.appendChild(h);
     cat.forEach((p, i) => {
-      const spb = (p.groove === 'sixteenth') ? 4 : 2;
+      const spb = (p.groove === 'triplet') ? 3 : (p.groove === 'sixteenth') ? 4 : 2;
       const types = parseAbcToSlotTypes(p.abc, p.beats * spb, spb / 2) || [];
       const yomi = types.map(t => KANA[t] || '?').join('');
       const row = document.createElement('div');
@@ -6427,10 +6455,75 @@ const RHYTHM_CATEGORIES = {
 // ===== ステージ用パターン生成 =====
 // 発音列（タ=アタック / ア=のばし / ン=休符 / ツ=ブラッシング、|=小節区切り）だけを
 // 唯一のソースとして、abc・beatMuted・subMuted を自動生成する（データの二重管理を防ぐ）
+// 三連グルーヴ用のABC生成（1小節分のカタカナスロット→ABC）。
+// 拍ごとに (3 連符グループを作る。丸ごと1拍の音/休符は普通の4分（連符括弧は不要）で、
+// 連続する丸ごと拍のタイは c4 等の長い音価にまとめる。拍をまたぐ音は拍境界で分割しタイ(-)で繋ぐ。
+function _mkTripletAbc(slots) {
+  const spb = 3;
+  const nBeats = Math.round(slots.length / spb);
+  // ① カタカナ → イベント列（拍境界で分割済み・拍ごとに格納）
+  const beatEvents = [];
+  for (let b = 0; b < nBeats; b++) beatEvents.push([]);
+  let u = 0;
+  while (u < slots.length) {
+    const c = slots[u];
+    let ch, d;
+    if (c === 'タ' || c === 'ツ') {
+      ch = (c === 'ツ') ? 'x' : 'c';
+      d = 1;
+      while (u + d < slots.length && slots[u + d] === 'ア') d++;
+    } else if (c === 'ン') {
+      ch = 'z';
+      d = 1;
+      while (u + d < slots.length && slots[u + d] === 'ン') d++;
+    } else { console.warn('mkP 不正な文字(三連):', c); u++; continue; }
+    let pos = u, remain = d, first = true;
+    while (remain > 0) {
+      const b = Math.floor(pos / spb);
+      const take = Math.min(remain, (b + 1) * spb - pos);
+      // 音符は拍をまたいだらタイで繋ぐ（tieOut）。休符はただ切るだけ
+      beatEvents[b].push({ ch, len: take, tieIn: !first && ch !== 'z',
+                           tieOut: ch !== 'z' && remain - take > 0 });
+      pos += take; remain -= take; first = false;
+    }
+    u += d;
+  }
+  // ② 拍ごとにトークン化
+  const parts = [];
+  let b = 0;
+  while (b < nBeats) {
+    const evs = beatEvents[b];
+    const whole = evs.length === 1 && evs[0].len === spb; // 丸ごと1拍
+    if (whole) {
+      const e = evs[0];
+      if (e.ch !== 'z' && !e.tieIn) {
+        // この拍から始まる丸ごと音符: 後続のタイ連結された丸ごと拍を吸収して長い音価に（c4等）
+        let k = 1;
+        while (b + k < nBeats && beatEvents[b + k].length === 1 &&
+               beatEvents[b + k][0].len === spb && beatEvents[b + k][0].ch === e.ch &&
+               beatEvents[b + k][0].tieIn) k++;
+        parts.push(e.ch + (2 * k) + (beatEvents[b + k - 1][0].tieOut ? '-' : ''));
+        b += k;
+        continue;
+      }
+      // 丸ごと休符、または3連の途中から続いてきた丸ごと拍（タイ受け）
+      parts.push(e.ch + '2' + (e.tieOut ? '-' : ''));
+      b++;
+      continue;
+    }
+    // 3連に分割された拍: (3（要素3個）または (3:2:n（音価をまとめて要素数が変わる場合）
+    const toks = evs.map(e => e.ch + (e.len === 1 ? '' : e.len) + (e.tieOut ? '-' : ''));
+    const marker = evs.length === 3 ? '(3' : `(3:2:${evs.length}`;
+    parts.push(marker + toks.join(''));
+    b++;
+  }
+  return parts.join(' ');
+}
+
 function mkP(name, bpm, yomi, groove, beatsPerMeasure) {
   groove = groove || 'eighth';
   const bpMeas = beatsPerMeasure || 4; // 拍子の分子（3なら3/4）。省略時は4/4
-  const spb = groove === 'sixteenth' ? 4 : 2; // 1拍あたりのスロット数
+  const spb = groove === 'triplet' ? 3 : (groove === 'sixteenth' ? 4 : 2); // 1拍あたりのスロット数
   const perMeasure = spb * bpMeas;
   const measures = yomi.split('|').map(m => m.replace(/\s+/g, ''));
   const beats = measures.length * bpMeas;
@@ -6449,6 +6542,7 @@ function mkP(name, bpm, yomi, groove, beatsPerMeasure) {
       }
       subMuted.push(sm);
     }
+    if (groove === 'triplet') { abcMeasures.push(_mkTripletAbc(slots)); return; }
     let abc = '', u = 0;
     const lenTok = (ch, n) => {
       if (groove === 'sixteenth') {
