@@ -1433,6 +1433,10 @@
   .score-slot.score-active { color: #2176ae; transition: color 0.06s; }
   .score-slot.score-accent.score-active { color: #c0392b; }
   .abc-measure-active { background: rgba(33,118,174,0.10); border-left: 3px solid #2176ae; border-radius: 3px; transition: background 0.1s; }
+  /* 統一レンダリング時の現在段ハイライト（abcjsが各要素に付ける段クラス abcjs-lN を利用） */
+  #abc-notation-area.abc-line-active-0 svg .abcjs-l0,
+  #abc-notation-area.abc-line-active-1 svg .abcjs-l1,
+  #abc-notation-area.abc-line-active-2 svg .abcjs-l2 { fill: #2176ae; }
 
   /* ABC拍カーソル */
   #abc-beat-cursor { display: none; gap: 3px; padding: 3px 0 5px; }
@@ -2800,7 +2804,7 @@ let nextNoteTime = 0;
 let timerID = null;
 let currentSound = 'beep';
 let groove = 'normal';
-let allAccent = false;
+let allAccent = true; // 既定はON（全ステージ・全スロット。Voice音色は影響を受けない）
 let showPick   = false;
 let showScore = false;
 let readoutOn = false; // リズム読み上げ（タ・ア・ン・ツ）ON/OFF
@@ -3047,7 +3051,7 @@ function _resetSetlistArrays() {
   metroIs8thBaseArr = Array(48).fill(false);
   metroShuffleArr   = Array(48).fill(67);
   metroSoundsArr    = Array(48).fill('beep');
-  metroAllAccentArr = Array(48).fill(false);
+  metroAllAccentArr = Array(48).fill(true); // 既定ON
   metroShowPickArr  = Array(48).fill(false);
   metroBeatMutedArr = Array(48).fill(null).map(() => []);
   metroSubMutedArr  = Array(48).fill(null).map(() => []);
@@ -3377,7 +3381,7 @@ function clearSelectedMetroSlot() {
   metroIs8thBaseArr[i] = false;
   metroShuffleArr[i]   = 67;
   metroSoundsArr[i]    = 'beep';
-  metroAllAccentArr[i] = false;
+  metroAllAccentArr[i] = true; // 既定ON
   metroShowPickArr[i]  = false;
   metroBeatMutedArr[i] = [];
   metroSubMutedArr[i]  = [];
@@ -3408,7 +3412,7 @@ function resetMetroSetlist() {
   metroIs8thBaseArr = Array(48).fill(false);
   metroShuffleArr = Array(48).fill(67);
   metroSoundsArr = Array(48).fill('beep');
-  metroAllAccentArr = Array(48).fill(false);
+  metroAllAccentArr = Array(48).fill(true); // 既定ON
   metroShowPickArr  = Array(48).fill(false);
   metroBeatMutedArr = Array(48).fill(null).map(() => []);
   metroSubMutedArr  = Array(48).fill(null).map(() => []);
@@ -3502,7 +3506,7 @@ function loadMetroSetlistFile(event) {
       metroIs8thBaseArr = Array(48).fill(false);
       metroShuffleArr   = Array(48).fill(67);
       metroSoundsArr    = Array(48).fill('beep');
-      metroAllAccentArr = Array(48).fill(false);
+      metroAllAccentArr = Array(48).fill(true); // 既定ON
       metroShowPickArr  = Array(48).fill(false);
       metroBeatMutedArr = Array(48).fill(null).map(()=>[]);
       metroSubMutedArr  = Array(48).fill(null).map(()=>[]);
@@ -4413,7 +4417,8 @@ function makeNoise(ctx, duration) {
 }
 
 function scheduleNote(time, isAccent, beatIdx = 0) {
-  if (allAccent) isAccent = true;
+  // Voice音色はAll Accentの影響を受けない（数字読みの音量バランスが崩れるため）
+  if (allAccent && currentSound !== 'voice') isAccent = true;
   const ctx = getAudioCtx();
   const out = masterOut;
 
@@ -4474,7 +4479,8 @@ function scheduleNote(time, isAccent, beatIdx = 0) {
 }
 
 function scheduleSubNote(time, beatIdx = 0) {
-  if (allAccent) { scheduleNote(time, true, beatIdx); return; }
+  // Voice音色は裏拍が母音（ア・ウ等）のままが正しいので、All Accentでも昇格させない
+  if (allAccent && currentSound !== 'voice') { scheduleNote(time, true, beatIdx); return; }
   const ctx = getAudioCtx();
   const out = masterOut;
   if (currentSound === 'beep') {
@@ -6621,7 +6627,9 @@ function _mk12_8Abc(slots) {
   return parts.join(' ');
 }
 
-function mkP(name, bpm, yomi, groove, beatsPerMeasure) {
+function mkP(name, bpm, yomi, groove, beatsPerMeasure, abcOverride) {
+  // abcOverride: GP入稿の記譜をそのまま使う（付点/タイなど作者の表記選択を保持）。
+  // 省略時はカタカナから自動生成（従来どおり）。
   groove = groove || 'eighth';
   const bpMeas = beatsPerMeasure || 4; // 拍子の分子（3なら3/4）。省略時は4/4
   const spb = (groove === 'triplet' || groove === 'twelve8') ? 3 : groove === 'sextuplet' ? 6
@@ -6698,144 +6706,145 @@ function mkP(name, bpm, yomi, groove, beatsPerMeasure) {
     }
     abcMeasures.push(abc);
   });
-  return { name, bpm, beats, groove, beatMuted, subMuted, abc: abcMeasures.join(' | ') };
+  return { name, bpm, beats, groove, beatMuted, subMuted,
+           abc: abcOverride || abcMeasures.join(' | ') };
 }
 
 // ===== 初心者向けステージ（クリアを目指す練習コース） =====
 Object.assign(RHYTHM_CATEGORIES, {
   'stage0': [
-    mkP('4分音符×4', 84, 'タアタアタアタア'),  // 旧: 1. 4分音符×4
-    mkP('8分音符×8', 82, 'タタタタタタタタ'),  // 旧: 2. 4拍目が休み
-    mkP('2分音符×2', 95, 'タアアアタアアア'),  // 旧: 3. 1・3拍目だけ
-    mkP('16分音符×16', 50, 'タタタタタタタタタタタタタタタタ', 'sixteenth'),  // 旧: 4. 2・4拍目だけ
-    mkP('3・4拍目が休み', 78, 'タアタアンンンン'),  // 旧: 5. 3拍目が休み
-    mkP('1・2拍目が休み', 78, 'ンンンンタアタア'),  // 旧: 6. 1拍目が休み
-    mkP('8分×4＋休み', 76, 'タタタタンンンン'),  // 旧: 7. まんなかが休み
-    mkP('2分音符と休み', 100, 'タアアアンンンン'),  // 旧: 8. 前半だけ
-    mkP('全音符', 115, 'タアアアアアアア'),  // 旧: 9. 後半だけ
-    mkP('全休符', 115, 'ンンンンンンンン'),  // 旧: 10. 2拍目が休み
-    mkP('三連符ぜんぶ', 70, 'タタタタタタタタタタタタ', 'triplet'),  // 旧: 11. 2分音符×2
-    mkP('三連符と休み', 75, 'タタタンンンタタタンンン', 'triplet'),  // 旧: 12. 2分音符と4分
+    mkP('4分音符×4', 84, 'タアタアタアタア', 'eighth', 4, 'c2 c2 c2 c2'),  // 旧: 1. 4分音符×4
+    mkP('8分音符×8', 82, 'タタタタタタタタ', 'eighth', 4, 'cc cc cc cc'),  // 旧: 2. 4拍目が休み
+    mkP('2分音符×2', 95, 'タアアアタアアア', 'eighth', 4, 'c4 c4'),  // 旧: 3. 1・3拍目だけ
+    mkP('16分音符×16', 50, 'タタタタタタタタタタタタタタタタ', 'sixteenth', 4, 'c/c/c/c/ c/c/c/c/ c/c/c/c/ c/c/c/c/'),  // 旧: 4. 2・4拍目だけ
+    mkP('3・4拍目が休み', 78, 'タアタアンンンン', 'eighth', 4, 'c2 c2 z2 z2'),  // 旧: 5. 3拍目が休み
+    mkP('1・2拍目が休み', 78, 'ンンンンタアタア', 'eighth', 4, 'z2 z2 c2 c2'),  // 旧: 6. 1拍目が休み
+    mkP('8分×4＋休み', 76, 'タタタタンンンン', 'eighth', 4, 'cc cc zz zz'),  // 旧: 7. まんなかが休み
+    mkP('2分＋休み', 100, 'タアアアンンンン', 'eighth', 4, 'c4 z4'),  // 旧: 8. 前半だけ
+    mkP('全音符', 115, 'タアアアアアアア', 'eighth', 4, 'c8'),  // 旧: 9. 後半だけ
+    mkP('全休符', 115, 'ンンンンンンンン', 'eighth', 4, 'z8'),  // 旧: 10. 2拍目が休み
+    mkP('三連符ぜんぶ', 70, 'タタタタタタタタタタタタ', 'triplet', 4, '(3ccc (3ccc (3ccc (3ccc'),  // 旧: 11. 2分音符×2
+    mkP('三連符と休み', 75, 'タタタンンンタタタンンン', 'triplet', 4, '(3ccc (3zzz (3ccc (3zzz'),  // 旧: 12. 2分音符と4分
   ],
   'stage1': [
-    mkP('タアンンのくり返し', 84, 'タアンンタアンン'),  // 旧: 1. 4分音符×4
-    mkP('ンンタアのくり返し', 82, 'ンンタアンンタア'),  // 旧: 2. 4拍目が休み
-    mkP('2・3拍目が休み', 80, 'タアンンンンタア'),  // 旧: 3. 1・3拍目だけ
-    mkP('1・4拍目が休み', 80, 'ンンタアタアンン'),  // 旧: 4. 2・4拍目だけ
-    mkP('4分＋2分＋4分', 90, 'タアタアアアタア'),  // 旧: 5. 3拍目が休み
-    mkP('2分＋休み＋4分', 86, 'タアアアンンタア'),  // 旧: 6. 1拍目が休み
-    mkP('4分＋休み＋2分', 88, 'タアンンタアアア'),  // 旧: 7. まんなかが休み
-    mkP('4分＋8分×4＋4分', 94, 'タアタタタタタア'),  // 旧: 8. 前半だけ
-    mkP('8分×2＋2分＋4分', 90, 'タタタアアアタア'),  // 旧: 9. 後半だけ
-    mkP('休み＋8分×2＋4分', 86, 'ンンンンタタタア'),  // 旧: 10. 2拍目が休み
-    mkP('タタンンのくり返し', 92, 'タタンンタタンン'),  // 旧: 11. 2分音符×2
-    mkP('タタタンのくり返し', 96, 'タタタンタタタン'),  // 旧: 12. 2分音符と4分
+    mkP('タアンンのくり返し', 84, 'タアンンタアンン', 'eighth', 4, 'c2 z2 c2 z2'),  // 旧: 1. 4分音符×4
+    mkP('ンンタアのくり返し', 82, 'ンンタアンンタア', 'eighth', 4, 'z2 c2 z2 c2'),  // 旧: 2. 4拍目が休み
+    mkP('2・3拍目が休み', 80, 'タアンンンンタア', 'eighth', 4, 'c2 z2 z2 c2'),  // 旧: 3. 1・3拍目だけ
+    mkP('1・4拍目が休み', 80, 'ンンタアタアンン', 'eighth', 4, 'z2 c2 c2 z2'),  // 旧: 4. 2・4拍目だけ
+    mkP('4分＋2分＋4分', 90, 'タアタアアアタア', 'eighth', 4, 'c2 c4 c2'),  // 旧: 5. 3拍目が休み
+    mkP('2分＋休み＋4分', 86, 'タアアアンンタア', 'eighth', 4, 'c4 z2 c2'),  // 旧: 6. 1拍目が休み
+    mkP('4分＋休み＋2分', 88, 'タアンンタアアア', 'eighth', 4, 'c2 z2 c4'),  // 旧: 7. まんなかが休み
+    mkP('4分＋8分×4＋4分', 94, 'タアタタタタタア', 'eighth', 4, 'c2 cc cc c2'),  // 旧: 8. 前半だけ
+    mkP('8分×2＋2分＋4分', 90, 'タタタアアアタア', 'eighth', 4, 'cc c4 c2'),  // 旧: 9. 後半だけ
+    mkP('休み＋8分×2＋4分', 86, 'ンンンンタタタア', 'eighth', 4, 'z4 cc c2'),  // 旧: 10. 2拍目が休み
+    mkP('タタンンのくり返し', 92, 'タタンンタタンン', 'eighth', 4, 'cc z2 cc z2'),  // 旧: 11. 2分音符×2
+    mkP('タタタンのくり返し', 96, 'タタタンタタタン', 'eighth', 4, 'cc cz cc cz'),  // 旧: 12. 2分音符と4分
   ],
   'stage2': [
-    mkP('タアタタのくり返し', 78, 'タアタタタアタタ'),  // 旧: 1. 8分音符×8
-    mkP('タタタアのくり返し', 76, 'タタタアタタタア'),  // 旧: 2. 4分＋8分8分
-    mkP('4分×2＋8分×4', 86, 'タアタアタタタタ'),  // 旧: 3. 8分8分＋4分
-    mkP('8分×4＋4分×2', 92, 'タタタタタアタア'),  // 旧: 4. 前半だけ8分
-    mkP('4分×2＋8分×4 その2', 98, 'タアタアタタタタ'),  // 旧: 5. 後半だけ8分
-    mkP('8分×2＋4分×2＋8分×2', 95, 'タタタアタアタタ'),  // 旧: 6. 1拍目だけ8分
-    mkP('8分×2＋休み＋8分×4', 102, 'タタンンタタタタ'),  // 旧: 7. 4拍目だけ8分
-    mkP('タタンタのくり返し', 84, 'タタンタタタンタ'),  // 旧: 8. 8分と休み
-    mkP('タタンンのくり返し', 88, 'タタンンタタンン'),  // 旧: 9. 8分→休み→8分
-    mkP('4分＋8分×2＋休み＋8分×2', 93, 'タアタタンンタタ'),  // 旧: 10. 4分はさみ
-    mkP('8分ミックス11（2小節）', 88, 'タタンンタタンン|タアタタンンタタ'),  // 旧: 11. 2小節チャレンジA
-    mkP('8分ミックス12（2小節）', 100, 'タタタアタアタタ|タアタタンンタア'),  // 旧: 12. 2小節チャレンジB
+    mkP('タアタタのくり返し', 78, 'タアタタタアタタ', 'eighth', 4, 'c2 cc c2 cc'),  // 旧: 1. 8分音符×8
+    mkP('タタタアのくり返し', 76, 'タタタアタタタア', 'eighth', 4, 'cc c2 cc c2'),  // 旧: 2. 4分＋8分8分
+    mkP('4分×2＋8分×4', 86, 'タアタアタタタタ', 'eighth', 4, 'c2 c2 cc cc'),  // 旧: 3. 8分8分＋4分
+    mkP('8分×4＋4分×2', 92, 'タタタタタアタア', 'eighth', 4, 'cc cc c2 c2'),  // 旧: 4. 前半だけ8分
+    mkP('4分×2＋8分×4 その2', 98, 'タアタアタタタタ', 'eighth', 4, 'c2 c2 cc cc'),  // 旧: 5. 後半だけ8分
+    mkP('8分×2＋4分×2＋8分×2', 95, 'タタタアタアタタ', 'eighth', 4, 'cc c2 c2 cc'),  // 旧: 6. 1拍目だけ8分
+    mkP('8分×2＋休み＋8分×4', 102, 'タタンンタタタタ', 'eighth', 4, 'cc z2 cc cc'),  // 旧: 7. 4拍目だけ8分
+    mkP('タタンタのくり返し', 84, 'タタンタタタンタ', 'eighth', 4, 'cc zc cc zc'),  // 旧: 8. 8分と休み
+    mkP('タタンンのくり返し', 88, 'タタンンタタンン', 'eighth', 4, 'cc z2 cc z2'),  // 旧: 9. 8分→休み→8分
+    mkP('4分＋8分×2＋休み＋8分×2', 93, 'タアタタンンタタ', 'eighth', 4, 'c2 cc zz cc'),  // 旧: 10. 4分はさみ
+    mkP('8分ミックス11（2小節）', 88, 'タタンンタタンン|タアタタンンタタ', 'eighth', 4, 'cc z2 cc z2 | c2 cc z2 cc'),  // 旧: 11. 2小節チャレンジA
+    mkP('8分ミックス12（2小節）', 100, 'タタタアタアタタ|タアタタンンタア', 'eighth', 4, 'cc c2 c2 cc | c2 cc z2 c2'),  // 旧: 12. 2小節チャレンジB
   ],
   'stage3': [
-    mkP('タンタンタンタン', 90, 'タンタンタンタン'),  // 旧: 1. タンタンタンタン
-    mkP('裏拍だけ', 72, 'ンタンタンタンタ'),  // 旧: 2. 裏拍だけ
-    mkP('ンタタアのくり返し', 80, 'ンタタアンタタア'),  // 旧: 3. 1拍目だけ裏
-    mkP('タイのリズム4', 84, 'タアタタンタアタ'),  // 旧: 4. 4拍目だけ裏
-    mkP('タアンタのくり返し', 84, 'タアンタタアンタ'),  // 旧: 5. 2・4拍目が裏
-    mkP('タンタアのくり返し', 68, 'タンタアタンタア'),  // 旧: 6. 1・3拍目が裏
-    mkP('タンタアのくり返し その2', 76, 'タンタアタンタア'),  // 旧: 7. タンとタア
-    mkP('ンタタタのくり返し', 80, 'ンタタタンタタタ'),  // 旧: 8. ンタとタタ
-    mkP('ンタタンのくり返し', 75, 'ンタタンンタタン'),  // 旧: 9. 裏からつなぐ
-    mkP('休み＋8分×3＋休み＋4分', 64, 'ンンタタタンタア'),  // 旧: 10. 休みスタート
-    mkP('裏拍ミックス11（2小節）', 76, 'タンタンンタンタ|タアンタタンタア'),  // 旧: 11. 2小節チャレンジA
-    mkP('裏拍ミックス12（2小節）', 90, 'ンタタアタンタタ|タタンタタアンン'),  // 旧: 12. 2小節チャレンジB
+    mkP('タンタンタンタン', 90, 'タンタンタンタン', 'eighth', 4, 'cz cz cz cz'),  // 旧: 1. タンタンタンタン
+    mkP('裏拍だけ', 72, 'ンタンタンタンタ', 'eighth', 4, 'zc zc zc zc'),  // 旧: 2. 裏拍だけ
+    mkP('ンタタアのくり返し', 80, 'ンタタアンタタア', 'eighth', 4, 'zc c2 zc c2'),  // 旧: 3. 1拍目だけ裏
+    mkP('タイのリズム4', 84, 'タアタタンタアタ', 'eighth', 4, 'c2 cc zc2c'),  // 旧: 4. 4拍目だけ裏
+    mkP('タアンタのくり返し', 84, 'タアンタタアンタ', 'eighth', 4, 'c2 zc c2 zc'),  // 旧: 5. 2・4拍目が裏
+    mkP('タンタアのくり返し', 68, 'タンタアタンタア', 'eighth', 4, 'cz c2 cz c2'),  // 旧: 6. 1・3拍目が裏
+    mkP('タンタアのくり返し その2', 76, 'タンタアタンタア', 'eighth', 4, 'cz c2 cz c2'),  // 旧: 7. タンとタア
+    mkP('ンタタタのくり返し', 80, 'ンタタタンタタタ', 'eighth', 4, 'zc cc zc cc'),  // 旧: 8. ンタとタタ
+    mkP('ンタタンのくり返し', 75, 'ンタタンンタタン', 'eighth', 4, 'zc cz zc cz'),  // 旧: 9. 裏からつなぐ
+    mkP('休み＋8分×3＋休み＋4分', 64, 'ンンタタタンタア', 'eighth', 4, 'z2 cc cz c2'),  // 旧: 10. 休みスタート
+    mkP('裏拍ミックス11（2小節）', 76, 'タンタンンタンタ|タアンタタンタア', 'eighth', 4, 'cz cz zc zc | c2 zc cz c2'),  // 旧: 11. 2小節チャレンジA
+    mkP('裏拍ミックス12（2小節）', 90, 'ンタタアタンタタ|タタンタタアンン', 'eighth', 4, 'zc c2 cz cc | cc zc c2 z2'),  // 旧: 12. 2小節チャレンジB
   ],
   'stage4': [
-    mkP('付点2分＋4分', 110, 'タアアアアアタア'),  // 旧: 1. 2分＋4分4分
-    mkP('4分＋付点2分', 110, 'タアタアアアアア'),  // 旧: 2. 4分4分＋2分
-    mkP('付点4分＋8分＋2分', 115, 'タアアタタアアア'),  // 旧: 3. 付点2分＋4分
-    mkP('2分＋付点4分＋8分', 105, 'タアアアタアアタ'),  // 旧: 4. 4分＋付点2分
-    mkP('付点4分＋8分×3＋4分', 95, 'タアアタタタタア'),  // 旧: 5. 2分＋8分4つ
-    mkP('8分×2＋4分＋付点4分＋8分', 86, 'タタタアタアアタ'),  // 旧: 6. 8分4つ＋2分
-    mkP('付点4分＋8分＋休み＋8分×2', 78, 'タアアタンンタタ'),  // 旧: 7. 付点4分8分＋2分
-    mkP('休み＋8分×2＋付点4分＋8分', 82, 'ンンタタタアアタ'),  // 旧: 8. 2分＋4分＋休符
-    mkP('タタアアのくり返し', 86, 'タタアアタタアア'),  // 旧: 9. 8分8分＋2分＋4分
-    mkP('付点ミックス10', 81, 'タタンタタアアタ'),  // 旧: 10. 4分＋2分＋4分
-    mkP('付点4分＋8分×3＋休み＋8分', 81, 'タアアタタタンタ'),  // 旧: 11. 4分＋休符＋2分
-    mkP('付点4分＋8分×3＋休み＋8分 その2', 86, 'タアアタタタンタ'),  // 旧: 12. 付点4分8分4分＋4分
-    mkP('付点ミックス13', 90, 'タタンタタアアタ'),  // 旧: 13. 2小節A
-    mkP('付点ミックス14', 82, 'タアアタンタンタ'),  // 旧: 14. 2小節B 8分まぜ
-    mkP('タイのリズム15', 76, 'ンンタタンタアア'),  // 旧: 15. 2小節C 付点
-    mkP('タイのリズム16', 84, 'ンタアアンンタタ'),  // 旧: 16. 2小節D
-    mkP('付点4分＋8分×2＋休み＋8分', 80, 'タアアタタンンタ'),  // 旧: 17. 2小節E
-    mkP('付点ミックス18', 80, 'タンンタタアアタ'),  // 旧: 18. 2小節F 休符まぜ
-    mkP('1・2・3拍目が休み', 105, 'ンンンンンンタア'),  // 旧: 19. 2小節G 付点2分
-    mkP('2・3・4拍目が休み', 105, 'タアンンンンンン'),  // 旧: 20. 2小節H 8分いろいろ
-    mkP('付点ミックス21', 95, 'ンタンタタアアタ'),  // 旧: 21. 2小節I 付点まぜ
-    mkP('ンタアアのくり返し', 85, 'ンタアアンタアア'),  // 旧: 22. 2小節J 休符
-    mkP('タイのリズム23（2小節）', 90, 'タタタアアアタア|タアアタンタアア'),  // 旧: 23. 2小節K
-    mkP('タイのリズム24（2小節）', 100, 'ンタタアタアアン|ンタアアンンタア'),  // 旧: 24. 2小節L 総合
+    mkP('付点2分＋4分', 110, 'タアアアアアタア', 'eighth', 4, 'c6 c2'),  // 旧: 1. 2分＋4分4分
+    mkP('4分＋付点2分', 110, 'タアタアアアアア', 'eighth', 4, 'c2 c6'),  // 旧: 2. 4分4分＋2分
+    mkP('付点4分＋8分＋2分', 115, 'タアアタタアアア', 'eighth', 4, 'c3c c4'),  // 旧: 3. 付点2分＋4分
+    mkP('2分＋付点4分＋8分', 105, 'タアアアタアアタ', 'eighth', 4, 'c4 c3c'),  // 旧: 4. 4分＋付点2分
+    mkP('付点4分＋8分×3＋4分', 95, 'タアアタタタタア', 'eighth', 4, 'c3c cc c2'),  // 旧: 5. 2分＋8分4つ
+    mkP('8分×2＋4分＋付点4分＋8分', 86, 'タタタアタアアタ', 'eighth', 4, 'cc c2 c3c'),  // 旧: 6. 8分4つ＋2分
+    mkP('付点4分＋8分＋休み＋8分×2', 78, 'タアアタンンタタ', 'eighth', 4, 'c3c z2 cc'),  // 旧: 7. 付点4分8分＋2分
+    mkP('休み＋8分×2＋付点4分＋8分', 82, 'ンンタタタアアタ', 'eighth', 4, 'z2 cc c3c'),  // 旧: 8. 2分＋4分＋休符
+    mkP('タタアアのくり返し', 86, 'タタアアタタアア', 'eighth', 4, 'cc3 cc3'),  // 旧: 9. 8分8分＋2分＋4分
+    mkP('付点ミックス10', 81, 'タタンタタアアタ', 'eighth', 4, 'cc zc c3c'),  // 旧: 10. 4分＋2分＋4分
+    mkP('付点4分＋8分×3＋休み＋8分', 81, 'タアアタタタンタ', 'eighth', 4, 'c3c cc zc'),  // 旧: 11. 4分＋休符＋2分
+    mkP('付点4分＋8分×3＋休み＋8分 その2', 86, 'タアアタタタンタ', 'eighth', 4, 'c3c cc zc'),  // 旧: 12. 付点4分8分4分＋4分
+    mkP('付点ミックス13', 90, 'タタンタタアアタ', 'eighth', 4, 'cc zc c3c'),  // 旧: 13. 2小節A
+    mkP('付点ミックス14', 82, 'タアアタンタンタ', 'eighth', 4, 'c3c zc zc'),  // 旧: 14. 2小節B 8分まぜ
+    mkP('タイのリズム15', 76, 'ンンタタンタアア', 'eighth', 4, 'z2 cc zc3'),  // 旧: 15. 2小節C 付点
+    mkP('タイのリズム16', 84, 'ンタアアンンタタ', 'eighth', 4, 'zc3 z2 cc'),  // 旧: 16. 2小節D
+    mkP('付点4分＋8分×2＋休み＋8分', 80, 'タアアタタンンタ', 'eighth', 4, 'c3c cz zc'),  // 旧: 17. 2小節E
+    mkP('付点ミックス18', 80, 'タンンタタアアタ', 'eighth', 4, 'cz zc c3c'),  // 旧: 18. 2小節F 休符まぜ
+    mkP('1・2・3拍目が休み', 105, 'ンンンンンンタア', 'eighth', 4, 'z6 c2'),  // 旧: 19. 2小節G 付点2分
+    mkP('2・3・4拍目が休み', 105, 'タアンンンンンン', 'eighth', 4, 'c2 z6'),  // 旧: 20. 2小節H 8分いろいろ
+    mkP('付点ミックス21', 95, 'ンタンタタアアタ', 'eighth', 4, 'zc zc c3c'),  // 旧: 21. 2小節I 付点まぜ
+    mkP('ンタアアのくり返し', 85, 'ンタアアンタアア', 'eighth', 4, 'zc3 zc3'),  // 旧: 22. 2小節J 休符
+    mkP('タイのリズム23（2小節）', 90, 'タタタアアアタア|タアアタンタアア', 'eighth', 4, 'cc c4 c2 | c3c zc3'),  // 旧: 23. 2小節K
+    mkP('タイのリズム24（2小節）', 100, 'ンタタアタアアン|ンタアアンンタア', 'eighth', 4, 'zc c2 c3z | zc3 z2 c2'),  // 旧: 24. 2小節L 総合
   ],
   'stage5': [
-    mkP('タイのリズム1', 85, 'タアタタアタタア'),  // 旧: 1. 8分音符×8
-    mkP('タイのリズム2', 90, 'タアタタアタタタ'),  // 旧: 2. 2裏→3拍タイ 基本
-    mkP('タイのリズム3', 80, 'タタタタアタタア'),  // 旧: 3. 4分と8分
-    mkP('タイのリズム4', 82, 'タアタタアタンン'),  // 旧: 4. 前8分＋2裏3拍タイ
-    mkP('タイのリズム5', 78, 'タアンタアアタア'),  // 旧: 5. 裏拍入り
-    mkP('タイのリズム6', 84, 'タアタタアタアタ'),  // 旧: 6. 2裏3拍タイ＋後8分
-    mkP('タイのリズム7', 78, 'ンタタタアタタア'),  // 旧: 7. 4拍目が8分
-    mkP('タイのリズム8', 70, 'ンタタタアタアタ'),  // 旧: 8. 2裏3拍タイ＋4拍休
-    mkP('タイのリズム9', 67, 'ンタアタアタアタ'),  // 旧: 9. 休符入り
-    mkP('タイのリズム10', 80, 'ンンタタアアタア'),  // 旧: 10. 休み＋2裏3拍タイ
-    mkP('8分ミックス11', 74, 'ンタタアアタンタ'),  // 旧: 11. 2裏→3拍のばしタイ
-    mkP('タイのリズム12', 76, 'ンンンタアタタア'),  // 旧: 12. 連続タイ(2裏3・3裏4)
-    mkP('タイのリズム13（2小節）', 88, 'タアタタアタタア|タアタタアタタタ'),  // 旧: 13. 2小節A 8分基本
-    mkP('タイのリズム14（2小節）', 80, 'タアンタアアタア|ンタタタアタタア'),  // 旧: 14. 2小節B タイ前
-    mkP('タイのリズム15（2小節）', 85, 'タアアタタタタア|タアタタアタタア'),  // 旧: 15. 2小節C タイ後
-    mkP('タイのリズム16（2小節）', 68, 'タアタタアタアタ|ンタタタアタタア'),  // 旧: 16. 2小節D 裏拍
-    mkP('タイのリズム17（2小節）', 72, 'ンンタタアアタア|ンタタタアアンタ'),  // 旧: 17. 2小節E タイ両方
-    mkP('8分ミックス18（2小節）', 68, 'ンタタアアタンタ|タタタアアタンン'),  // 旧: 18. 2小節F タイ＋休み
-    mkP('小節またぎタイ19（2小節）', 82, 'タアタタアタタタ|アアタタアタタタ'),  // 旧: 19. 2小節G 8分いろいろ
-    mkP('小節またぎタイ20（2小節）', 76, 'タタタアアタタタ|アタタアアタタタ'),  // 旧: 20. 2小節H 連続タイ
-    mkP('小節またぎタイ21（2小節）', 90, 'タアアアタタアタ|アアアアタタアタ'),  // 旧: 21. 2小節I のばしタイ
-    mkP('小節またぎタイ22（2小節）', 94, 'ンンタアンタアタ|アタタアンタアタ'),  // 旧: 22. 2小節J 総合8分
-    mkP('小節またぎタイ23（2小節）', 84, 'ンタンタンタンタ|アアタタアタタア'),  // 旧: 23. 2小節K 休符＋タイ
-    mkP('小節またぎタイ24（2小節）', 100, 'ンンタタアタアタ|アアタタンンンタ'),  // 旧: 24. 2小節L タイ総合
+    mkP('タイのリズム1', 85, 'タアタタアタタア', 'eighth', 4, 'c2 cc- cc c2'),  // 旧: 1. 8分音符×8
+    mkP('タイのリズム2', 90, 'タアタタアタタタ', 'eighth', 4, 'c2 cc- cc cc'),  // 旧: 2. 2裏→3拍タイ 基本
+    mkP('タイのリズム3', 80, 'タタタタアタタア', 'eighth', 4, 'cc cc- cc c2'),  // 旧: 3. 4分と8分
+    mkP('タイのリズム4', 82, 'タアタタアタンン', 'eighth', 4, 'c2 cc- cc z2'),  // 旧: 4. 前8分＋2裏3拍タイ
+    mkP('タイのリズム5', 78, 'タアンタアアタア', 'eighth', 4, 'c2 zc- c2 c2'),  // 旧: 5. 裏拍入り
+    mkP('タイのリズム6', 84, 'タアタタアタアタ', 'eighth', 4, 'c2 cc- cc2c'),  // 旧: 6. 2裏3拍タイ＋後8分
+    mkP('タイのリズム7', 78, 'ンタタタアタタア', 'eighth', 4, 'zc cc- cc c2'),  // 旧: 7. 4拍目が8分
+    mkP('タイのリズム8', 70, 'ンタタタアタアタ', 'eighth', 4, 'zc cc- cc2c'),  // 旧: 8. 2裏3拍タイ＋4拍休
+    mkP('タイのリズム9', 67, 'ンタアタアタアタ', 'eighth', 4, 'zc2c- cc2c'),  // 旧: 9. 休符入り
+    mkP('タイのリズム10', 80, 'ンンタタアアタア', 'eighth', 4, 'z2 cc- c2 c2'),  // 旧: 10. 休み＋2裏3拍タイ
+    mkP('8分ミックス11', 74, 'ンタタアアタンタ', 'eighth', 4, 'zc c2- cc zc'),  // 旧: 11. 2裏→3拍のばしタイ
+    mkP('タイのリズム12', 76, 'ンンンタアタタア', 'eighth', 4, 'z3c- cc c2'),  // 旧: 12. 連続タイ(2裏3・3裏4)
+    mkP('タイのリズム13（2小節）', 88, 'タアタタアタタア|タアタタアタタタ', 'eighth', 4, 'c2 cc- cc c2 | c2 cc- cc cc'),  // 旧: 13. 2小節A 8分基本
+    mkP('タイのリズム14（2小節）', 80, 'タアンタアアタア|ンタタタアタタア', 'eighth', 4, 'c2 zc- c2 c2 | zc cc- cc c2'),  // 旧: 14. 2小節B タイ前
+    mkP('タイのリズム15（2小節）', 85, 'タアアタタタタア|タアタタアタタア', 'eighth', 4, 'c3c cc c2 | c2 cc- cc c2'),  // 旧: 15. 2小節C タイ後
+    mkP('タイのリズム16（2小節）', 68, 'タアタタアタアタ|ンタタタアタタア', 'eighth', 4, 'c2 cc- cc2c | zc cc- cc c2'),  // 旧: 16. 2小節D 裏拍
+    mkP('タイのリズム17（2小節）', 72, 'ンンタタアアタア|ンタタタアアンタ', 'eighth', 4, 'z2 cc- c2 c2 | zc cc- c2 zc'),  // 旧: 17. 2小節E タイ両方
+    mkP('8分ミックス18（2小節）', 68, 'ンタタアアタンタ|タタタアアタンン', 'eighth', 4, 'zc c2- cc zc | cc c2- cc z2'),  // 旧: 18. 2小節F タイ＋休み
+    mkP('小節またぎタイ19（2小節）', 82, 'タアタタアタタタ|アアタタアタタタ', 'eighth', 4, 'c2 cc- cc cc- | c2 cc- cc cc'),  // 旧: 19. 2小節G 8分いろいろ
+    mkP('小節またぎタイ20（2小節）', 76, 'タタタアアタタタ|アタタアアタタタ', 'eighth', 4, 'cc c2- cc cc- | cc c2- cc cc'),  // 旧: 20. 2小節H 連続タイ
+    mkP('小節またぎタイ21（2小節）', 90, 'タアアアタタアタ|アアアアタタアタ', 'eighth', 4, 'c4 cc2c- | c4 cc2c'),  // 旧: 21. 2小節I のばしタイ
+    mkP('小節またぎタイ22（2小節）', 94, 'ンンタアンタアタ|アタタアンタアタ', 'eighth', 4, 'z2 c2 zc2c- | cc c2 zc2c'),  // 旧: 22. 2小節J 総合8分
+    mkP('小節またぎタイ23（2小節）', 84, 'ンタンタンタンタ|アアタタアタタア', 'eighth', 4, 'zc zc zc zc- | c2 cc- cc c2'),  // 旧: 23. 2小節K 休符＋タイ
+    mkP('小節またぎタイ24（2小節）', 100, 'ンンタタアタアタ|アアタタンンンタ', 'eighth', 4, 'z2 cc- cc- cc- | c2 cc z3c'),  // 旧: 24. 2小節L タイ総合
   ],
   'stage6': [
-    mkP('タアタタのくり返し', 60, 'タアタタタアタタタアタタタアタタ', 'sixteenth'),  // 旧: 1. 8分音符×8
-    mkP('タタタアのくり返し', 60, 'タタタアタタタアタタタアタタタア', 'sixteenth'),  // 旧: 2. 2裏→3拍タイ 基本
-    mkP('タタアタのくり返し', 57, 'タタアタタタアタタタアタタタアタ', 'sixteenth'),  // 旧: 3. 4分と8分
-    mkP('タアアタのくり返し', 54, 'タアアタタアアタタアアタタアアタ', 'sixteenth'),  // 旧: 4. 前8分＋2裏3拍タイ
-    mkP('タタアアのくり返し', 60, 'タタアアタタアアタタアアタタアア', 'sixteenth'),  // 旧: 5. 裏拍入り
-    mkP('タアタタタアアタのくり返し', 62, 'タアタタタアアタタアタタタアアタ', 'sixteenth'),  // 旧: 6. 2裏3拍タイ＋後8分
-    mkP('タタタアタタアタのくり返し', 58, 'タタタアタタアタタタタアタタアタ', 'sixteenth'),  // 旧: 7. 4拍目が8分
-    mkP('16分ミックス8', 70, 'タアアアタタタタタアタアタタタタ', 'sixteenth'),  // 旧: 8. 2裏3拍タイ＋4拍休
-    mkP('タアンンタタンンのくり返し', 67, 'タアンンタタンンタアンンタタンン', 'sixteenth'),  // 旧: 9. 休符入り
-    mkP('ンンタアンンタタのくり返し', 65, 'ンンタアンンタタンンタアンンタタ', 'sixteenth'),  // 旧: 10. 休み＋2裏3拍タイ
-    mkP('16分ミックス11', 74, 'タアタアタアタタタタタアタアタタ', 'sixteenth'),  // 旧: 11. 2裏→3拍のばしタイ
-    mkP('16分タイ12', 76, 'タアタアタアタタアタタアタアタタ', 'sixteenth'),  // 旧: 12. 連続タイ(2裏3・3裏4)
-    mkP('タタタンのくり返し', 72, 'タタタンタタタンタタタンタタタン', 'sixteenth'),  // 旧: 13. 2小節A 8分基本
-    mkP('タンタタのくり返し', 74, 'タンタタタンタタタンタタタンタタ', 'sixteenth'),  // 旧: 14. 2小節B タイ前
-    mkP('16分ミックス15', 73, 'タアタタタタタアタアアタタタタア', 'sixteenth'),  // 旧: 15. 2小節C タイ後
-    mkP('16分ミックス16', 68, 'タタタアタアアタンタタタタアアア', 'sixteenth'),  // 旧: 16. 2小節D 裏拍
-    mkP('16分タイ17', 66, 'タアアタタタタアアタタアタアタタ', 'sixteenth'),  // 旧: 17. 2小節E タイ両方
-    mkP('16分ミックス18（2小節）', 62, 'ンンンタンンンタンンンタンンンタ|タンンンタンンンンンンタンンンタ', 'sixteenth'),  // 旧: 18. 2小節F タイ＋休み
-    mkP('16分タイ19（2小節）', 74, 'タアタアタアタタアタタアタアタタ|ンンタアタアアタタタタアタアアタ', 'sixteenth'),  // 旧: 19. 2小節G 8分いろいろ
-    mkP('16分タイ20（2小節）', 76, 'タアタタアタタアタアタタアタタア|ンンタアタアタタタアタタアタタア', 'sixteenth'),  // 旧: 20. 2小節H 連続タイ
-    mkP('16分ミックス21（2小節）', 72, 'ンンタアンンタタンンタアンンタタ|タアンンタタンンタアンンタタンン', 'sixteenth'),  // 旧: 21. 2小節I のばしタイ
-    mkP('16分タイ22（2小節）', 75, 'タアタアタアタタアタタアタアタタ|ンンタアタアアタタタタアタアアタ', 'sixteenth'),  // 旧: 22. 2小節J 総合8分
-    mkP('小節またぎタイ23（2小節）', 76, 'タアタアタアタタアタタアタアタタ|アタタアタアタタアタタアタアタタ', 'sixteenth'),  // 旧: 23. 2小節K 休符＋タイ
-    mkP('小節またぎタイ24（2小節）', 68, 'タアタタアタタアタアタタアタタタ|アアタアタアタタアタタアタアタタ', 'sixteenth'),  // 旧: 24. 2小節L タイ総合
+    mkP('タアタタのくり返し', 60, 'タアタタタアタタタアタタタアタタ', 'sixteenth', 4, 'cc/c/ cc/c/ cc/c/ cc/c/'),  // 旧: 1. 8分音符×8
+    mkP('タタタアのくり返し', 60, 'タタタアタタタアタタタアタタタア', 'sixteenth', 4, 'c/c/c c/c/c c/c/c c/c/c'),  // 旧: 2. 2裏→3拍タイ 基本
+    mkP('タタアタのくり返し', 57, 'タタアタタタアタタタアタタタアタ', 'sixteenth', 4, 'c/cc/ c/cc/ c/cc/ c/cc/'),  // 旧: 3. 4分と8分
+    mkP('タアアタのくり返し', 54, 'タアアタタアアタタアアタタアアタ', 'sixteenth', 4, 'c3/2c/ c3/2c/ c3/2c/ c3/2c/'),  // 旧: 4. 前8分＋2裏3拍タイ
+    mkP('タタアアのくり返し', 60, 'タタアアタタアアタタアアタタアア', 'sixteenth', 4, 'c/c3/2 c/c3/2 c/c3/2 c/c3/2'),  // 旧: 5. 裏拍入り
+    mkP('タアタタタアアタのくり返し', 62, 'タアタタタアアタタアタタタアアタ', 'sixteenth', 4, 'cc/c/ c3/2c/ cc/c/ c3/2c/'),  // 旧: 6. 2裏3拍タイ＋後8分
+    mkP('タタタアタタアタのくり返し', 58, 'タタタアタタアタタタタアタタアタ', 'sixteenth', 4, 'c/c/c c/cc/ c/c/c c/cc/'),  // 旧: 7. 4拍目が8分
+    mkP('16分ミックス8', 70, 'タアアアタタタタタアタアタタタタ', 'sixteenth', 4, 'c2 c/c/c/c/ cc c/c/c/c/'),  // 旧: 8. 2裏3拍タイ＋4拍休
+    mkP('タアンンタタンンのくり返し', 67, 'タアンンタタンンタアンンタタンン', 'sixteenth', 4, 'cz c/c/z cz c/c/z'),  // 旧: 9. 休符入り
+    mkP('ンンタアンンタタのくり返し', 65, 'ンンタアンンタタンンタアンンタタ', 'sixteenth', 4, 'zc zc/c/ zc zc/c/'),  // 旧: 10. 休み＋2裏3拍タイ
+    mkP('16分ミックス11', 74, 'タアタアタアタタタタタアタアタタ', 'sixteenth', 4, 'cc cc/c/ c/c/c cc/c/'),  // 旧: 11. 2裏→3拍のばしタイ
+    mkP('16分タイ12', 76, 'タアタアタアタタアタタアタアタタ', 'sixteenth', 4, 'cc cc/c/- c/c/c cc/c/'),  // 旧: 12. 連続タイ(2裏3・3裏4)
+    mkP('タタタンのくり返し', 72, 'タタタンタタタンタタタンタタタン', 'sixteenth', 4, 'c/c/c/z/ c/c/c/z/ c/c/c/z/ c/c/c/z/'),  // 旧: 13. 2小節A 8分基本
+    mkP('タンタタのくり返し', 74, 'タンタタタンタタタンタタタンタタ', 'sixteenth', 4, 'c/z/c/c/ c/z/c/c/ c/z/c/c/ c/z/c/c/'),  // 旧: 14. 2小節B タイ前
+    mkP('16分ミックス15', 73, 'タアタタタタタアタアアタタタタア', 'sixteenth', 4, 'cc/c/ c/c/c c3/2c/ c/c/c'),  // 旧: 15. 2小節C タイ後
+    mkP('16分ミックス16', 68, 'タタタアタアアタンタタタタアアア', 'sixteenth', 4, 'c/c/c c3/2c/ z/c/c/c/ c2'),  // 旧: 16. 2小節D 裏拍
+    mkP('16分タイ17', 66, 'タアアタタタタアアタタアタアタタ', 'sixteenth', 4, 'c3/2c/ c/c/c- c/c/c cc/c/'),  // 旧: 17. 2小節E タイ両方
+    mkP('16分ミックス18（2小節）', 62, 'ンンンタンンンタンンンタンンンタ|タンンンタンンンンンンタンンンタ', 'sixteenth', 4, 'z3/2c/ z3/2c/ z3/2c/ z3/2c/ | c/z3/2 c/z3/2 z3/2c/ z3/2c/'),  // 旧: 18. 2小節F タイ＋休み
+    mkP('16分タイ19（2小節）', 74, 'タアタアタアタタアタタアタアタタ|ンンタアタアアタタタタアタアアタ', 'sixteenth', 4, 'cc cc/c/- c/c/c cc/c/ | zc c3/2c/ c/c/c c3/2c/'),  // 旧: 19. 2小節G 8分いろいろ
+    mkP('16分タイ20（2小節）', 76, 'タアタタアタタアタアタタアタタア|ンンタアタアタタタアタタアタタア', 'sixteenth', 4, 'cc/c/- c/c/c cc/c/- c/c/c | zc cc/c/ cc/c/- c/c/c'),  // 旧: 20. 2小節H 連続タイ
+    mkP('16分ミックス21（2小節）', 72, 'ンンタアンンタタンンタアンンタタ|タアンンタタンンタアンンタタンン', 'sixteenth', 4, 'zc zc/c/ zc zc/c/ | cz c/c/z cz c/c/z'),  // 旧: 21. 2小節I のばしタイ
+    mkP('16分タイ22（2小節）', 75, 'タアタアタアタタアタタアタアタタ|ンンタアタアアタタタタアタアアタ', 'sixteenth', 4, 'cc cc/c/- c/c/c cc/c/ | zc c3/2c/ c/c/c c3/2c/'),  // 旧: 22. 2小節J 総合8分
+    mkP('小節またぎタイ23（2小節）', 76, 'タアタアタアタタアタタアタアタタ|アタタアタアタタアタタアタアタタ', 'sixteenth', 4, 'cc cc/c/- c/c/c cc/c/- | c/c/c cc/c/- c/c/c cc/c/'),  // 旧: 23. 2小節K 休符＋タイ
+    mkP('小節またぎタイ24（2小節）', 68, 'タアタタアタタアタアタタアタタタ|アアタアタアタタアタタアタアタタ', 'sixteenth', 4, 'cc/c/- c/c/c cc/c/- c/c/c/c/- | cc cc/c/- c/c/c cc/c/'),  // 旧: 24. 2小節L タイ総合
   ],
   // 実験ステージ（新リズムの動作確認用。8分/16分シャッフル・3/4・12/8・三連符・6連符）
   'stage7': [
@@ -6873,7 +6882,7 @@ function loadRhythmCategory(categoryKey) {
   metroIs8thBaseArr = Array(48).fill(false);
   metroShuffleArr   = Array(48).fill(67);
   metroSoundsArr    = Array(48).fill('beep');
-  metroAllAccentArr = Array(48).fill(false);
+  metroAllAccentArr = Array(48).fill(true); // 既定ON
   metroShowPickArr  = Array(48).fill(false);
   metroBeatMutedArr = Array(48).fill(null).map(() => []);
   metroSubMutedArr  = Array(48).fill(null).map(() => []);
@@ -6940,6 +6949,13 @@ function flashAbcCursor(pos, isAccent) {
     document.querySelectorAll('[id^="abc-m"]').forEach(el => el.classList.remove('abc-measure-active'));
     const activeEl = document.getElementById('abc-m' + activeMeasure);
     if (activeEl) activeEl.classList.add('abc-measure-active');
+    // 統一レンダリング時（小節ごとのdivが無い）は、abcjsの段クラスで現在の段の音符を色付け
+    const area = document.getElementById('abc-notation-area');
+    if (area && !document.getElementById('abc-m0')) {
+      for (let l = 0; l < Math.max(_abcNumMeasures, 2); l++) {
+        area.classList.toggle('abc-line-active-' + l, l === activeMeasure);
+      }
+    }
   }
   // 3小節以上のモバイル: 小節境界を越えたらウィンドウをスライド
   if (_abcNumMeasures > 2 && _abcDotsPerMeasure > 0) {
@@ -6967,6 +6983,8 @@ function flashAbcCursor(pos, isAccent) {
 function clearAbcCursor() {
   document.querySelectorAll('.abc-cdot').forEach(d => d.classList.remove('active', 'accent'));
   document.querySelectorAll('[id^="abc-m"]').forEach(el => el.classList.remove('abc-measure-active'));
+  const _aa = document.getElementById('abc-notation-area');
+  if (_aa) _aa.classList.remove('abc-line-active-0', 'abc-line-active-1', 'abc-line-active-2');
   _abcCurrentWindow = 0;
   _scrollAbcToWindow(0);
   _scoreCurrentRow = 0;
@@ -7042,8 +7060,9 @@ function renderAbcScore(slotIdx) {
   // 小節ごとに分割（| で区切り、空要素は除去）
   const measures = abc.split('|').map(m => m.trim()).filter(m => m.length > 0);
 
-  if (isMobile && measures.length > 1) {
-    // ── モバイル・複数小節: スライドウィンドウ方式 ──
+  if (isMobile && measures.length > 2) {
+    // ── モバイル・3小節以上: スライドウィンドウ方式（現行コンテンツでは未使用） ──
+    abcArea.style.paddingBottom = ''; // 前の表示の余白を引き継がない
     abcArea.innerHTML = '';
     const scrollWindow = document.createElement('div');
     scrollWindow.id = 'abc-scroll-window';
@@ -7079,46 +7098,23 @@ function renderAbcScore(slotIdx) {
     }
     _abcCurrentWindow = 0;
     scrollInner.style.transform = 'translateY(0)';
-  } else if (!isMobile && measures.length > 1) {
-    // ── PC・2小節以上: 各小節を独立に描いて縦並び ──
-    // （旧実装はgetBBoxで座標を読み手動で縦揃えしていたが、連桁が音符から外れる崩れの
-    //   原因になっていたため撤廃。abcjsの描画をそのまま使い、堅牢にした）
-    abcArea.innerHTML = '';
-    const staffW = Math.max(300, abcArea.offsetWidth - 30);
-    measures.forEach((measure, idx) => {
-      const div = document.createElement('div');
-      div.id = `abc-m${idx}`;
-      if (idx > 0) div.style.marginTop = '2px';
-      abcArea.appendChild(div);
-      ABCJS.renderAbc(`abc-m${idx}`, `X:1\n${abcMeterHeader()}\nL:1/8\n%%stafflines 1\nK:perc\n${measure}|`, {
-        staffwidth: staffW, add_classes: true,
-        paddingtop: 8, paddingbottom: 12, paddingleft: 15, paddingright: 15,
-      });
-      const div2 = document.getElementById(`abc-m${idx}`);
-      const svg = div2 ? div2.querySelector('svg') : null;
-      if (svg) {
-        if (div2) { div2.style.overflow = ''; div2.style.height = ''; }
-        svg.removeAttribute('height');
-        svg.style.width = '80%';
-        svg.style.display = 'block';
-        svg.style.margin = '0 auto';
-        svg.style.height = 'auto';
-        _trimAbcViewBox(div2);
-      }
-    });
   } else {
-    // ── PC単小節/2小節 または モバイル単小節: 一括レンダリング ──
-    const fullAbc = `X:1\n${abcMeterHeader()}\nL:1/8\n%%stafflines 1\nK:perc\n${abc}|`;
+    // ── 統一レンダリング: 1〜2小節は1回のrenderAbcで描く（複数小節は1小節=1段） ──
+    // 全小節が同一スケールになり、小節をまたぐタイも段をまたいで正しく描かれる
+    // （旧実装の小節ごと個別レンダリングは、小節間で音符の大きさが揃わない・
+    //   またぎタイが消える問題があったため廃止）
+    abcArea.innerHTML = '';
+    const body = measures.map(m => m + '|').join('\n'); // 改行＝段替え
+    const fullAbc = `X:1\n${abcMeterHeader()}\nL:1/8\n%%stafflines 1\nK:perc\n${body}`;
     if (isMobile) {
       const staffW = Math.max(200, abcArea.offsetWidth - 30);
       ABCJS.renderAbc('abc-notation-area', fullAbc, {
-        staffwidth: staffW,
-        wrap: { minSpacing: 1, maxSpacing: 2.7, preferredMeasuresPerLine: 1 },
-        add_classes: true,
+        staffwidth: staffW, add_classes: true,
         paddingtop: 10, paddingbottom: 10, paddingleft: 15, paddingright: 15,
       });
       const msvg = abcArea.querySelector('svg');
       if (msvg) { msvg.removeAttribute('height'); msvg.style.width = '100%'; msvg.style.height = 'auto'; }
+      abcArea.style.paddingBottom = '';
     } else {
       ABCJS.renderAbc('abc-notation-area', fullAbc, {
         responsive: 'resize', add_classes: true,
@@ -7129,7 +7125,8 @@ function renderAbcScore(slotIdx) {
     if (!isMobile) {
       const svg = abcArea.querySelector('svg');
       const vb = svg && svg.viewBox.baseVal;
-      if (vb && vb.width > 0) abcArea.style.paddingBottom = (vb.height / vb.width * 100) + '%';
+      // 小節数が変わっても余白が正しくなるよう毎回設定し直す（据え置きが巨大余白の原因だった）
+      abcArea.style.paddingBottom = (vb && vb.width > 0) ? (vb.height / vb.width * 100) + '%' : '';
     }
   }
 
