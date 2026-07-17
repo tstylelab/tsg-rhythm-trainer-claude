@@ -4,6 +4,8 @@
 
 # エディタ・ツール設定
 .claude/
+# AI向けローカル開発メモ（公開リポジトリに含めない。Googleドライブ同期で共有）
+AGENTS.md
 
 # OS生成ファイル
 Thumbs.db
