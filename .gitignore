@@ -6,6 +6,8 @@
 .claude/
 # AI向けローカル開発メモ（公開リポジトリに含めない。Googleドライブ同期で共有）
 AGENTS.md
+# 問題入稿フォルダ（GP/MusicXML作業場。公開リポジトリに含めない）
+入稿/
 
 # OS生成ファイル
 Thumbs.db
