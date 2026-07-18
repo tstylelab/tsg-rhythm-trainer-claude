@@ -7055,6 +7055,14 @@ function renderAbcScore(slotIdx) {
   if (mainEl) mainEl.classList.add('has-notation');
   if (dotsArea) dotsArea.style.display = 'none';
   abcArea.style.display = 'block';
+  // abcjsのresponsiveモードがコンテナに残す height/overflow/position を毎回解除する。
+  // （残ったままだと次の非responsiveレンダリングがその高さでクリップされ、
+  //   2小節パターンの2段目が見えなくなる）
+  abcArea.style.height = '';
+  abcArea.style.overflow = '';
+  abcArea.style.overflowX = 'auto';
+  abcArea.style.position = '';
+  abcArea.style.verticalAlign = '';
 
   const isMobile = window.innerWidth < 768;
   // 小節ごとに分割（| で区切り、空要素は除去）
@@ -7098,36 +7106,100 @@ function renderAbcScore(slotIdx) {
     }
     _abcCurrentWindow = 0;
     scrollInner.style.transform = 'translateY(0)';
-  } else {
-    // ── 統一レンダリング: 1〜2小節は1回のrenderAbcで描く（複数小節は1小節=1段） ──
-    // 全小節が同一スケールになり、小節をまたぐタイも段をまたいで正しく描かれる
-    // （旧実装の小節ごと個別レンダリングは、小節間で音符の大きさが揃わない・
-    //   またぎタイが消える問題があったため廃止）
+  } else if (measures.length > 1) {
+    // ── 複数小節: 1回のrenderAbcで1小節=1段に描く ──
+    // 同一スケール＆小節をまたぐタイも段をまたいで描かれる。
+    // 見た目を1小節表示と同じ「内容ぴったり幅→拡大」にするため、各小節の自然な幅を
+    // 隠しレンダリングで測り、いちばん広い小節に合わせて全段を同じ幅で描く
+    // （%%stretchlast 1 で短い段もその幅まで伸ばして揃える）
+    let probe = document.getElementById('abc-measure-probe');
+    if (!probe) {
+      probe = document.createElement('div');
+      probe.id = 'abc-measure-probe';
+      probe.style.cssText = 'position:absolute;left:-9999px;top:0;width:900px;visibility:hidden;';
+      document.body.appendChild(probe);
+    }
+    let natW = 0;
+    measures.forEach(m => {
+      ABCJS.renderAbc('abc-measure-probe', `X:1\n${abcMeterHeader()}\nL:1/8\n%%stafflines 1\nK:perc\n${m}|`,
+        { add_classes: false, paddingtop: 0, paddingbottom: 0, paddingleft: 0, paddingright: 0 });
+      const ps = probe.querySelector('svg');
+      try { if (ps) natW = Math.max(natW, ps.getBBox().width); } catch (e) {}
+    });
+    const staffW = Math.max(240, Math.ceil(natW) + 10);
     abcArea.innerHTML = '';
     const body = measures.map(m => m + '|').join('\n'); // 改行＝段替え
-    const fullAbc = `X:1\n${abcMeterHeader()}\nL:1/8\n%%stafflines 1\nK:perc\n${body}`;
+    // %%staffsep 20: 段の間隔を詰める（既定は間延びしすぎる）
+    const fullAbc = `X:1\n${abcMeterHeader()}\nL:1/8\n%%stafflines 1\n%%stretchlast 1\n%%staffsep 20\nK:perc\n${body}`;
+    ABCJS.renderAbc('abc-notation-area', fullAbc, {
+      staffwidth: staffW, add_classes: true,
+      paddingtop: 10, paddingbottom: 10, paddingleft: 15, paddingright: 15,
+    });
+    const msvg = abcArea.querySelector('svg');
+    if (msvg) { msvg.removeAttribute('height'); msvg.style.width = '100%'; msvg.style.height = 'auto'; }
+    _trimAbcViewBox(abcArea);
+    // 2段目以降を1段目に整列: 1段目だけ拍子記号のぶん音符開始が右に寄るため、
+    // 後続の段の内容（五線以外＝音符・小節線・連桁・タイ）を水平移動＋微スケールして
+    // 「1拍目の縦位置」と「最終小節線」を1段目に一致させる
+    if (msvg) {
+      const lineRef = (ln) => {
+        const notes = msvg.querySelectorAll(`.abcjs-l${ln}.abcjs-note, .abcjs-l${ln}.abcjs-rest`);
+        const bars  = msvg.querySelectorAll(`.abcjs-l${ln}.abcjs-bar`);
+        if (!notes.length || !bars.length) return null;
+        let first = Infinity, last = -Infinity;
+        notes.forEach(n => { first = Math.min(first, n.getBBox().x); });
+        bars.forEach(b => { last = Math.max(last, b.getBBox().x); });
+        return { first, last };
+      };
+      const ref0 = lineRef(0);
+      for (let ln = 1; ref0 && ln < measures.length; ln++) {
+        const r = lineRef(ln);
+        if (!r || r.last <= r.first) continue;
+        const s = (ref0.last - ref0.first) / (r.last - r.first);
+        const tx = ref0.first - s * r.first;
+        if (Math.abs(tx) < 0.5 && Math.abs(s - 1) < 0.01) continue;
+        msvg.querySelectorAll(`.abcjs-l${ln}`).forEach(el => {
+          const c = el.getAttribute('class') || '';
+          if (c.indexOf('abcjs-staff') !== -1) return; // 五線・段飾りは動かさない
+          const prev = el.getAttribute('transform');
+          el.setAttribute('transform', `translate(${tx.toFixed(2)} 0) scale(${s.toFixed(4)} 1)` + (prev ? ' ' + prev : ''));
+        });
+      }
+    }
+    // renderAbc がコンテナに書き込む height/overflow を解除（トリム後のSVGは伸びるため、
+    // 残っていると下側がクリップされて2段目が見えなくなる）
+    abcArea.style.height = '';
+    abcArea.style.overflow = '';
+    abcArea.style.overflowX = 'auto';
+    abcArea.style.paddingBottom = '';
+  } else {
+    // ── 単小節: 一括レンダリング（この見た目が基準） ──
+    // ※responsive:'resize'は使わない。abcjsがコンテナにResizeObserverと
+    //   height/overflow を残し続け、以後の別スロットの描画がクリップされるため。
+    //   代わりに「自然な幅で描く→viewBoxをトリム→width:100%で拡大」で同じ見た目にする
+    const fullAbc = `X:1\n${abcMeterHeader()}\nL:1/8\n%%stafflines 1\nK:perc\n${abc}|`;
     if (isMobile) {
       const staffW = Math.max(200, abcArea.offsetWidth - 30);
       ABCJS.renderAbc('abc-notation-area', fullAbc, {
-        staffwidth: staffW, add_classes: true,
+        staffwidth: staffW,
+        wrap: { minSpacing: 1, maxSpacing: 2.7, preferredMeasuresPerLine: 1 },
+        add_classes: true,
         paddingtop: 10, paddingbottom: 10, paddingleft: 15, paddingright: 15,
       });
-      const msvg = abcArea.querySelector('svg');
-      if (msvg) { msvg.removeAttribute('height'); msvg.style.width = '100%'; msvg.style.height = 'auto'; }
-      abcArea.style.paddingBottom = '';
     } else {
       ABCJS.renderAbc('abc-notation-area', fullAbc, {
-        responsive: 'resize', add_classes: true,
+        staffwidth: 740, add_classes: true,
         paddingtop: 10, paddingbottom: 10, paddingleft: 15, paddingright: 15,
       });
     }
+    const msvg = abcArea.querySelector('svg');
+    if (msvg) { msvg.removeAttribute('height'); msvg.style.width = '100%'; msvg.style.height = 'auto'; }
     _trimAbcViewBox(abcArea);
-    if (!isMobile) {
-      const svg = abcArea.querySelector('svg');
-      const vb = svg && svg.viewBox.baseVal;
-      // 小節数が変わっても余白が正しくなるよう毎回設定し直す（据え置きが巨大余白の原因だった）
-      abcArea.style.paddingBottom = (vb && vb.width > 0) ? (vb.height / vb.width * 100) + '%' : '';
-    }
+    // renderAbc がコンテナに書き込む height/overflow を解除（クリップ防止）
+    abcArea.style.height = '';
+    abcArea.style.overflow = '';
+    abcArea.style.overflowX = 'auto';
+    abcArea.style.paddingBottom = '';
   }
 
   const subs = getSubsPerBeat();
