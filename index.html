@@ -5575,7 +5575,8 @@ function showTapVerdict(cls, big, small) {
   const h = document.getElementById('tap-hint');
   if (v) { v.textContent = big; v.className = 'tap-verdict ' + cls; }
   if (h && small !== undefined) h.textContent = small;
-  if (cls === 'v-miss') playMissBuzz(); // ×のときだけ（余分タップ・ズレすぎ・叩き逃しすべて）
+  // ミス音はここでは鳴らさない。「実際にタップした時のミス」だけで鳴らす
+  // （叩き逃しまで鳴ると、叩いていないのにブザーが鳴って混乱するため。judgeTap側で発音）
 }
 
 // タップ入力（パッド pointerdown / PCはスペースキー）
@@ -5621,6 +5622,7 @@ function judgeTap(tapTime) {
     tapExtraTimes.push(tapTime); // 発生時刻を記録（ループ集計時に正しい周へ帰属させる）
     _tapCombo = 0;
     showTapVerdict('v-miss', '×', '余分なタップ');
+    playMissBuzz(); // タップした結果の×なので鳴らす
     return;
   }
   best.judged = true;
@@ -5640,6 +5642,7 @@ function judgeTap(tapTime) {
     best.verdict = 'tap-miss';
     _tapCombo = 0;
     showTapVerdict('v-miss', '×', msText);
+    playMissBuzz(); // タップした結果の×なので鳴らす
   }
   showTapMeter(d, best.verdict);
   colorTapNote(best.idx, best.verdict);
