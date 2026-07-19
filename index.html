@@ -1775,6 +1775,56 @@
   .cert.locked .cert-name { font-size: 0.86rem; font-weight: 700; color: #b0b4bd; }
   .cert.locked .cert-hint { font-size: 0.72rem; color: #b8bcc5; }
 
+  /* ===== ステージクリア賞状ポップアップ（画面いっぱいにポーンと出る） ===== */
+  #stage-cert-modal {
+    position: fixed; inset: 0; z-index: 2000;
+    display: none; align-items: center; justify-content: center;
+    background: rgba(20, 16, 40, 0.72);
+    padding: 16px;
+  }
+  #stage-cert-modal.open { display: flex; }
+  .stage-cert-card {
+    width: min(92vw, 540px);
+    max-height: 92vh; overflow-y: auto;
+    background: linear-gradient(160deg, #fffdf4 0%, #fdf3d0 55%, #f7e6ae 100%);
+    border: 4px solid #d9b545;
+    outline: 2px solid #f3dfa0; outline-offset: -10px;
+    border-radius: 14px;
+    box-shadow: 0 18px 60px rgba(0, 0, 0, 0.45);
+    text-align: center;
+    padding: 26px 22px 20px;
+    transform-origin: center;
+    animation: certPopIn 0.55s cubic-bezier(0.18, 1.4, 0.4, 1) both;
+  }
+  @keyframes certPopIn {
+    0%   { transform: scale(0.2) rotate(-6deg); opacity: 0; }
+    60%  { transform: scale(1.06) rotate(1.5deg); opacity: 1; }
+    100% { transform: scale(1) rotate(0deg); opacity: 1; }
+  }
+  .stage-cert-medal { font-size: 3.4rem; line-height: 1.1; }
+  .stage-cert-congrats {
+    font-size: 1.5rem; font-weight: 900; color: #b8860b;
+    letter-spacing: 0.12em; margin-top: 6px;
+  }
+  .stage-cert-heading {
+    display: inline-block; font-size: 0.8rem; font-weight: 800; color: #8a6d1f;
+    border-top: 1px solid #d9b545; border-bottom: 1px solid #d9b545;
+    padding: 3px 18px; letter-spacing: 0.35em; margin-top: 10px;
+  }
+  .stage-cert-stage {
+    font-size: 1.2rem; font-weight: 800; color: #4a3a10; margin-top: 14px;
+  }
+  .stage-cert-sub { font-size: 0.95rem; font-weight: 700; color: #6b5a24; margin-top: 2px; }
+  .stage-cert-body {
+    font-size: 0.95rem; line-height: 1.75; color: #5a4a18;
+    margin: 16px auto 0; max-width: 26em; text-align: left;
+  }
+  .stage-cert-date { font-size: 0.8rem; color: #a08842; margin-top: 16px; }
+  .stage-cert-brand { font-size: 0.74rem; color: #c0a860; margin-top: 2px; letter-spacing: 0.1em; }
+  .stage-cert-close-hint { font-size: 0.76rem; color: #b09a55; margin-top: 14px; }
+  /* コレクション画面：獲得済みカードはタップで賞状を再表示できる */
+  .cert.done { cursor: pointer; }
+
   .modal-section {
     margin-bottom: 18px;
   }
@@ -2491,6 +2541,21 @@
     <div class="modal-title" style="justify-content:center; text-align:center;">🏅 獲得した賞状</div>
     <div id="trophy-progress"></div>
     <div id="trophy-grid"></div>
+  </div>
+</div>
+
+<!-- ===== ステージクリア賞状ポップアップ ===== -->
+<div id="stage-cert-modal" onclick="closeStageCert()">
+  <div class="stage-cert-card">
+    <div class="stage-cert-medal">🏆</div>
+    <div class="stage-cert-congrats">おめでとう！</div>
+    <div class="stage-cert-heading">認 定 証</div>
+    <div class="stage-cert-stage" id="stage-cert-stage"></div>
+    <div class="stage-cert-sub" id="stage-cert-sub"></div>
+    <div class="stage-cert-body" id="stage-cert-body"></div>
+    <div class="stage-cert-date" id="stage-cert-date"></div>
+    <div class="stage-cert-brand">TSG ギタースクール</div>
+    <div class="stage-cert-close-hint">タップで閉じる</div>
   </div>
 </div>
 
@@ -4768,11 +4833,28 @@ let clearedMap = (() => {
   try { return JSON.parse(localStorage.getItem(CLEARS_LS_KEY) || '{}') || {}; }
   catch(e) { return {}; }
 })();
-let _tapCleanMeasures = 0; // 連続ノーミス小節数
+let _tapCleanMeasures = 0; // 連続ノーミス小節数（基準テンポ以上のみ加算＝クリア判定用）
+let _tapStreakAny = 0;     // 連続ノーミス小節数（テンポ・照合と無関係＝成功ポップ用。
+                           // クリア条件と演出を同じ条件で縛ると、テンポを下げた時や
+                           // 保存状態の名前ズレ時に「成功の手応えゼロ」になるため分離）
 let _tapCombo = 0;         // 連続◎の数（表示用）
 
+// スロット→カテゴリ定義の照合。名前で見つからなければ譜面内容(abc)で照合する
+// （問題の改名アップデート後、端末に古い名前の保存状態が残っていると名前照合が
+//   失敗し、基準テンポ不明→クリア判定・連続成功表示が丸ごと沈黙する事故があったため）
+function slotCategoryPattern(i) {
+  const cat = RHYTHM_CATEGORIES[_currentCategoryKey];
+  if (!cat) return null;
+  return cat.find(pt => pt.name === metroNames[i]) ||
+         cat.find(pt => (pt.abc || '') !== '' && pt.abc === (currentCategoryAbcStrings[i] || '')) ||
+         null;
+}
+
 function slotClearKey(i) {
-  const name = metroNames[i];
+  // クリア記録のキーはカテゴリ定義の正式名を優先（古い名前のままキーを作ると、
+  // 名前更新後に⭐が消えてしまう）。照合できない場合のみ表示名で代用
+  const p = slotCategoryPattern(i);
+  const name = (p && p.name) || metroNames[i];
   if (!name) return null; // 名前のないスロットはクリア対象外
   return (_currentCategoryKey || 'custom') + '/' + name;
 }
@@ -4780,9 +4862,7 @@ function slotClearKey(i) {
 // 基準テンポはカテゴリ定義のBPMから取る。
 // （スロットのBPMはスライダー操作の自動保存で書き変わるため基準にできない）
 function slotBaseBpm(i) {
-  const cat = RHYTHM_CATEGORIES[_currentCategoryKey];
-  if (!cat) return null;
-  const p = cat.find(pt => pt.name === metroNames[i]);
+  const p = slotCategoryPattern(i);
   return p ? p.bpm : null;
 }
 
@@ -5088,6 +5168,7 @@ function openTrophyRoom() {
         '<div class="cert-name">' + st.label + (st.sub ? '<br>' + st.sub : '') + '</div>' +
         '<div class="cert-date">' + (d ? d + ' 達成' : '達成') + '</div>' +
         '<div class="cert-brand">TSG ギタースクール</div>';
+      card.onclick = () => showStageCert(st.key); // タップで賞状を大きく再表示
     } else if (it.cleared > 0) {
       const p = it.total ? Math.round(it.cleared / it.total * 100) : 0;
       card.classList.add('partial');
@@ -5111,6 +5192,50 @@ function openTrophyRoom() {
 
 function closeTrophyRoom() {
   document.getElementById('trophy-modal').classList.remove('open');
+}
+
+// ===== ステージクリア賞状ポップアップ =====
+// ステージごとの「クリアするとこうなる」効能文（ユーモア込み）。
+// 新ステージ追加時にここへ1行足す。無ければ汎用文が出るので壊れはしない
+const STAGE_CERT_COPY = {
+  stage1:  '音符の長さは、もうお見通し。「なんとなく伸ばす」日々に、今日でお別れです。',
+  stage2:  '8分音符の組み合わせを完全制覇。たいていのリズム譜は、初見でも顔色ひとつ変えません。',
+  stage3:  '裏拍が取れる人は、音楽の世界で信頼される人。あなたのノリ、一気にプロっぽくなりました。',
+  stage4:  '付点の「タメ」が体に入りました。「はしってるよ」と言われる回数が、確実に減ります。',
+  stage5:  '音がつながってもリズムを見失わない耳と足を獲得。バラードで泣かせる準備、整いました。',
+  stage6:  '16分音符の扉が開きました。速いフレーズを見ても「数えれば怖くない」と言える人に。',
+  stage7:  'ハネるリズムをモノにしました。ブルースセッションで「おっ」と振り向かれるやつです。',
+  stage8:  'ハネた16分は、プロでも油断する難所。ファンクの入口に、堂々と立ちました。',
+  stage9:  '1・2・3で世界が回り出す。ワルツの名曲にも、もう置いていかれません。',
+  stage10: '12/8の大きなうねりを体得。ゆったりしたブルースやバラードで、深いノリが出せます。',
+  stage11: '実戦の16分パターンを制覇。カッティングの「あの感じ」の正体が、わかる人になりました。',
+  stage12: '連符もへっちゃらな探究者に認定。ここまで来たあなたは、立派なリズムの変態です（ほめ言葉）。',
+};
+
+function showStageCert(stageKey) {
+  const modal = document.getElementById('stage-cert-modal');
+  if (!modal) return;
+  const st = getTrophyStages().find(s => s.key === stageKey);
+  const label = st ? st.label : 'ステージ';
+  const sub = st ? st.sub : '';
+  document.getElementById('stage-cert-stage').textContent = label + ' 全問クリア';
+  document.getElementById('stage-cert-sub').textContent = sub;
+  document.getElementById('stage-cert-body').textContent =
+    STAGE_CERT_COPY[stageKey] ||
+    'このステージのリズムを完全制覇。あなたのリズム力、また一段レベルアップしました。';
+  const d = _stageLatestClearDate(stageKey).replace(/-/g, '.');
+  document.getElementById('stage-cert-date').textContent = d ? d + ' 達成' : '達成';
+  // アニメーションを毎回頭から再生する（連続で開いても必ずポーンと出る）
+  const card = modal.querySelector('.stage-cert-card');
+  card.style.animation = 'none';
+  void card.offsetWidth; // reflowでアニメーションをリセット
+  card.style.animation = '';
+  modal.classList.add('open');
+}
+
+function closeStageCert() {
+  const modal = document.getElementById('stage-cert-modal');
+  if (modal) modal.classList.remove('open');
 }
 
 // クリア演出のタイマー（停止・手動移動時に取り消せるようハンドルを保持）
@@ -5152,7 +5277,7 @@ function markSlotCleared(i) {
       _stageClearTimer = null;
       playEffect('stageclear');
       throwConfetti(60); // 全クリアは盛大に
-      showToast('🏆 ステージ全クリア！おめでとうございます！');
+      showStageCert(_currentCategoryKey); // 画面いっぱいの賞状ポップアップ
       if (metronomeRunning) toggleMetronome(); // 全クリアで締め
     }, 1200);
   } else {
@@ -5324,6 +5449,7 @@ function resetTapSession() {
   _tapLoopStarted = false;
   _tapCountInLeft = 0;
   _tapCleanMeasures = 0;
+  _tapStreakAny = 0;
   _tapCombo = 0;
   clearTapNoteColors();
   clearCountdownVisual();
@@ -5399,11 +5525,29 @@ function showTapMeter(offsetSec, verdictCls) {
   setTimeout(() => tick.remove(), 2400);
 }
 
+// ミス（×）を耳でも気づけるように、小さな「ブッ」を鳴らす。
+// 譜面を見ている最中は枠の色を見逃しやすいため。音量控えめが最重要（クリック音より小さく）
+let _lastMissBuzz = 0;
+function playMissBuzz() {
+  const ctx = getAudioCtx();
+  if (ctx.currentTime - _lastMissBuzz < 0.12) return; // 連発時に音が重なって耳障りになるのを防ぐ
+  _lastMissBuzz = ctx.currentTime;
+  const osc = ctx.createOscillator();
+  const g = ctx.createGain();
+  osc.type = 'square';
+  osc.frequency.value = 150; // 低めの「ブッ」。クリック音(高音)と聞き分けやすい
+  g.gain.setValueAtTime(0.05, ctx.currentTime);
+  g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.1);
+  osc.connect(g); g.connect(masterOut);
+  osc.start(ctx.currentTime); osc.stop(ctx.currentTime + 0.11);
+}
+
 function showTapVerdict(cls, big, small) {
   const v = document.getElementById('tap-verdict');
   const h = document.getElementById('tap-hint');
   if (v) { v.textContent = big; v.className = 'tap-verdict ' + cls; }
   if (h && small !== undefined) h.textContent = small;
+  if (cls === 'v-miss') playMissBuzz(); // ×のときだけ（余分タップ・ズレすぎ・叩き逃しすべて）
 }
 
 // タップ入力（パッド pointerdown / PCはスペースキー）
@@ -5520,6 +5664,7 @@ function finalizeTapLoop(loopNo, boundaryTime) {
     const baseBpm = slotBaseBpm(slotIdx2); // 基準テンポ（カテゴリ定義のBPM）
     if (miss === 0) {
       const tempoOK = (baseBpm !== null && bpm >= baseBpm);
+      _tapStreakAny += measuresPerLoop;
       if (tempoOK) _tapCleanMeasures += measuresPerLoop;
       if (!alreadyCleared && tempoOK && slotClearKey(slotIdx2) &&
           _tapCleanMeasures >= CLEAR_MEASURES) {
@@ -5530,9 +5675,9 @@ function finalizeTapLoop(loopNo, boundaryTime) {
         clearTapNoteColors();
         return;
       }
-      // 連続成功はポップで祝う（2小節以上・基準テンポ以上のとき、ファッと浮き出す）
-      if (tempoOK && _tapCleanMeasures >= 2) {
-        showStreakPop(`${_tapCleanMeasures}小節連続成功！`);
+      // 連続成功はポップで必ず祝う（テンポ・クリア済みに関係なく。成功の手応えはゲームの核）
+      if (_tapStreakAny >= 2) {
+        showStreakPop(`${_tapStreakAny}小節連続成功！`);
       }
       // 上部の固定表示は短く：カウントのみ。特記事項だけ短い一言を添える（折り返さない長さ）
       let suffix = '';
@@ -5541,6 +5686,7 @@ function finalizeTapLoop(loopNo, boundaryTime) {
       if (s) s.textContent = `◎${perfect} ○${good} ×0 · ${score}点${suffix}`;
     } else {
       _tapCleanMeasures = 0;
+      _tapStreakAny = 0;
       if (s) s.textContent = `◎${perfect} ○${good} ×${miss} · ${score}点`;
     }
   }
