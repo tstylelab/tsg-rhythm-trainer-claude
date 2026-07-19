@@ -7525,8 +7525,8 @@ renderStringButtons();
 const _refPitchEl = document.getElementById('ref-pitch-value');
 if (_refPitchEl) _refPitchEl.textContent = refA4 + ' Hz';
 
-// スコアビューの状態を復元
-if (localStorage.getItem('tsg-rhythm-showScore') === '1') {
+// スコアビューの状態を復元（デフォルトON。ボタンで消した人＝'0'だけOFFを維持）
+if (localStorage.getItem('tsg-rhythm-showScore') !== '0') {
   setShowScore(true);
 }
 
