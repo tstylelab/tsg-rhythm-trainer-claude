@@ -4873,11 +4873,24 @@ let _tapLoopStarted = false;
 let _tapCountInLeft = 0;    // カウントイン残り拍数
 let _tapClearPending = false;   // クリア直後〜次の問題開始までtrue（この間は出題・判定・ミス音を全停止。
                                 // クリア後に流れ続ける音符が「叩き逃し」扱いでブザー連発になるのを防ぐ）
-let _tapFinalizeTimers = [];    // 予約済みのループ集計タイマー。停止時に必ず全キャンセルする
+let _tapFinalizeTimers = [];    // 予約済みのループ集計 {tid, loopNo, boundary}。停止時に必ず全処理する
                                 // （生き残ると再開後の新しいゲームの音符を誤ってミス集計する）
 function cancelTapFinalizeTimers() {
-  _tapFinalizeTimers.forEach(clearTimeout);
+  _tapFinalizeTimers.forEach(f => clearTimeout(f.tid));
   _tapFinalizeTimers = [];
+}
+
+// 停止時の集計フラッシュ：演奏し終わったループ（境界時刻を過ぎたもの）の集計は
+// 破棄せず今すぐ実行する。予約は境界の250ms＋端末補正後に発火するため、
+// 「4小節目を叩き終えた直後にSTOP」だとキャンセルだけではクリアが消える
+// （ステージ最後のスロットで頻発：終わった瞬間に止めるため）。
+// まだ終わっていないループの予約だけを破棄する
+function flushDueTapFinalizes() {
+  const now = getAudioCtx().currentTime;
+  const due = _tapFinalizeTimers.filter(f => f.boundary <= now)
+                                .sort((a, b) => a.loopNo - b.loopNo);
+  cancelTapFinalizeTimers();
+  due.forEach(f => finalizeTapLoop(f.loopNo, f.boundary));
 }
 let _tapCountInTotal = 4;   // カウントインの総拍数（1小節分。3/4なら3拍）
 let _tapSweepTimer = null;
@@ -5748,7 +5761,11 @@ function finalizeTapLoop(loopNo, boundaryTime) {
       }
       // 連続成功はポップで必ず祝う（テンポ・クリア済みに関係なく。成功の手応えはゲームの核）
       if (_tapStreakAny >= 2) {
-        showStreakPop(`${_tapStreakAny}小節連続成功！`);
+        // クリア小節数に達しているのに⭐が出ない唯一の理由＝テンポ不足は、ポップで明示する
+        // （小さな⚡表示だけだと「成功してるのに星が付かない」ように見えてしまう）
+        const needTempo = !alreadyCleared && baseBpm !== null && bpm < baseBpm &&
+                          _tapStreakAny >= CLEAR_MEASURES;
+        showStreakPop(`${_tapStreakAny}小節連続成功！` + (needTempo ? `（⭐はテンポ${baseBpm}以上で）` : ''));
       }
       // 上部の固定表示は短く：カウントのみ。特記事項だけ短い一言を添える（折り返さない長さ）
       let suffix = '';
@@ -5806,10 +5823,10 @@ function scheduler() {
           const loopNo = _tapLoopNo;
           // 猶予は250ms＋端末補正ぶん（大遅延端末でループ末尾の音符が未判定のまま集計されるのを防ぐ）
           const tid = setTimeout(() => {
-            _tapFinalizeTimers = _tapFinalizeTimers.filter(x => x !== tid);
+            _tapFinalizeTimers = _tapFinalizeTimers.filter(x => x.tid !== tid);
             finalizeTapLoop(loopNo, t);
           }, Math.max(0, (t - ctx.currentTime) * 1000 + 250 + effectiveTapOffset() * 1000));
-          _tapFinalizeTimers.push(tid);
+          _tapFinalizeTimers.push({ tid, loopNo, boundary: t });
           _tapLoopNo++;
         } else {
           _gameFirstTargetTime = t; // 1周目の開始時刻（これより十分前のタップは判定しない）
@@ -6046,9 +6063,10 @@ function toggleMetronome() {
     // タップ練習の後始末（直前のスコア表示は残す）
     if (_tapSweepTimer) { clearInterval(_tapSweepTimer); _tapSweepTimer = null; }
     _tapCountInLeft = 0;
+    // 演奏し終わったループの集計はターゲット破棄の前に実行する（クリア消失防止）
+    flushDueTapFinalizes();
     tapTargets = [];
     tapExtraTimes = [];
-    cancelTapFinalizeTimers();
     if (tapModeOn) {
       const h = document.getElementById('tap-hint');
       if (h) h.textContent = 'タップでもう一度スタート';
