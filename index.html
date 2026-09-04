@@ -2,7 +2,15 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
-<link rel="icon" type="image/png" href="images/favicon.png">
+<link rel="icon" type="image/png" sizes="64x64" href="images/favicon-64.png">
+<!-- ホーム画面追加（PWA）用：アイコン・アプリ名・全画面表示・テーマ色。オフライン対応は sw.js -->
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" sizes="180x180" href="images/apple-touch-icon-180.png">
+<meta name="theme-color" content="#1a1a2e">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Rhythm">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>リズムトレーナー【ギター初心者向け・無料】- ギタースクールTSG</title>
 <meta name="description" content="ギター初心者向けリズム練習・リズム譜読みの無料Webアプリ。見て・聴いて・タップしてリズムを身につけよう。スマホ対応。ギタースクールTSG提供。監修：杉山つよし。">
@@ -2515,6 +2523,18 @@
       <div class="tip-item">
         <div class="tip-title">METRO で普通に鳴らして確認</div>
         <div class="tip-desc">ゲームではなくリズムをただ聴きたいときは「METRO」で再生できます。タアンツや拍ガイドとの併用もOKです。</div>
+      </div>
+    </div>
+
+    <div class="modal-section">
+      <div class="modal-section-title">📱 ホーム画面に追加（オフライン対応）</div>
+      <div class="tip-item">
+        <div class="tip-title red">📶 電波が無い場所でも使えます</div>
+        <div class="tip-desc">ブラウザの共有メニューから「ホーム画面に追加」すると、アプリのように全画面で起動します。一度オンラインで開いておけば必要なファイル（音源も含む）が端末に保存されるので、電波の届かない場所でも練習できます。</div>
+      </div>
+      <div class="tip-item">
+        <div class="tip-title">iPhoneではホーム画面版とSafari版で保存データが別になります</div>
+        <div class="tip-desc">練習の記録やセットリストは、ホーム画面から開いたアプリとSafariで開いたページで別々に保存されます。どちらか一方に決めて使うのがおすすめです。</div>
       </div>
     </div>
 
@@ -7581,6 +7601,24 @@ window.addEventListener('resize', () => {
 resetMuteState();
 renderBeatDots();
 initMetroSetlist();
+
+// ===== オフライン対応（Service Worker の登録）=====
+// https（本番）と localhost でのみ登録。file:// では動作しないため黙ってスキップ。
+// 登録に失敗しても通常どおり動く（オフライン機能が無効になるだけ）。
+if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('./sw.js').catch((e) => console.warn('[sw] register failed:', e));
+  });
+}
+// ホーム画面から起動した全画面表示（スタンドアロン）では、他アプリへのリンクを別窓で開く。
+// 全画面表示には「戻る」ボタンが無く、同じ窓で遷移すると戻れなくなるため。
+(function () {
+  const standalone = (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches)
+    || window.navigator.standalone === true;
+  if (standalone) {
+    document.querySelectorAll('a[href*="tsg-gt.com"]').forEach((a) => { a.target = '_blank'; a.rel = 'noopener'; });
+  }
+})();
 initHints();
 initCapoBtns();
 renderStringButtons();
