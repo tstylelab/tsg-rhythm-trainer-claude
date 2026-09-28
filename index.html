@@ -3088,6 +3088,7 @@ function _currentSetlistPayload() {
     selectedSlot: metroSelectedSlot, slotCount: metroSlotCount,
     beatMuted: metroBeatMutedArr, subMuted: metroSubMutedArr,
     categoryKey: _currentCategoryKey,
+    introTempoDefaultsV2,
     // 楽譜abcはスロット単位で保存する（カテゴリから再導出すると並び替え・削除が反映されない）
     abcs: currentCategoryAbcStrings.slice(0, 48)
   });
@@ -3125,6 +3126,7 @@ function _applySetlistState(s) {
     if (Array.isArray(s.beatMuted))    s.beatMuted.forEach((v,i)=>{ if(i<48) metroBeatMutedArr[i]=Array.isArray(v)?v.slice():[]; });
     if (Array.isArray(s.subMuted))     s.subMuted.forEach((v,i)=>{ if(i<48) metroSubMutedArr[i]=Array.isArray(v)?v.map(r=>Array.isArray(r)?r.slice():[]):[] });
     if (typeof s.selectedSlot==='number') metroSelectedSlot = s.selectedSlot;
+    introTempoDefaultsV2 = s.introTempoDefaultsV2 === true;
     if ([12,24,36,48].includes(s.slotCount)) metroSlotCount = s.slotCount;
     if (metroSelectedSlot >= metroSlotCount || metroSelectedSlot < 0) metroSelectedSlot = 0;
     const catSel = document.getElementById('rhythm-category-select');
@@ -3191,6 +3193,7 @@ function _resetSetlistArrays() {
   metroSelectedSlot = 0;
   metroSlotCount    = 24;
   _currentCategoryKey = '';
+  introTempoDefaultsV2 = false;
   currentCategoryAbcStrings = [];
   const catSel = document.getElementById('rhythm-category-select');
   if (catSel) catSel.value = '';
@@ -3198,6 +3201,7 @@ function _resetSetlistArrays() {
 
 // 切替後の共通処理：作業状態の保存・再描画
 function _afterListSwitch() {
+  updateIntroStageDefaultTempos();
   saveMetroLists();
   saveMetroSetlist();
   renderMetroListSelect();
@@ -3671,6 +3675,7 @@ function loadMetroSetlistFile(event) {
       if (Array.isArray(data.abcs)) {
         currentCategoryAbcStrings = data.abcs.slice(0, 48).map(v => typeof v === 'string' ? v : '');
       }
+      introTempoDefaultsV2 = true; // バックアップに保存されたBPMをそのまま尊重する
       // ⭐クリア記録の復元（既存の記録とマージ）
       if (data.clears && typeof data.clears === 'object' && !Array.isArray(data.clears)) {
         clearedMap = Object.assign({}, clearedMap, data.clears);
@@ -3792,6 +3797,7 @@ function decodeSetlistFromHash() {
       _currentCategoryKey = '';
       currentCategoryAbcStrings = [];
     }
+    introTempoDefaultsV2 = true; // 共有URLが指定したBPMを再読み込み後も保つ
 
     // 共有URLの内容は必ず「共通リスト」に取り込む
     // （名前付きリストを選択したまま開いても、そのリストを誤って上書きしないため）
@@ -3862,7 +3868,8 @@ function copyShareUrl() {
 function initMetroSetlist() {
   loadMetroLists();
   loadMetroSetlist();
-  decodeSetlistFromHash();
+  const importedFromUrl = decodeSetlistFromHash();
+  if (!importedFromUrl && updateIntroStageDefaultTempos()) saveMetroSetlist();
   renderMetroListSelect();
   renderMetroSlots();
   updateMetroExpandBtn();
@@ -3880,6 +3887,28 @@ function initMetroSetlist() {
       || (metroNames[cat.length] || '') !== ''; // 問題数が減った場合の残骸検出
     if (stale) loadRhythmCategory(_currentCategoryKey);
   }
+}
+
+// 旧初期BPMのまま保存されたステージ0・1だけを新しい基準へ更新する。
+// 練習中に手動で変えたBPM、並べ替え・編集した問題、共有URLの指定値は維持する。
+const INTRO_STAGE_PREVIOUS_BPMS = {
+  stage0: [84, 82, 95, 50, 78, 78, 76, 100, 115, 115, 70, 75],
+  stage1: [84, 82, 80, 80, 90, 86, 88, 94, 90, 86, 92, 96]
+};
+let introTempoDefaultsV2 = false;
+function updateIntroStageDefaultTempos() {
+  const previous = INTRO_STAGE_PREVIOUS_BPMS[_currentCategoryKey];
+  const patterns = RHYTHM_CATEGORIES[_currentCategoryKey];
+  if (!previous || !patterns || introTempoDefaultsV2) return false;
+  patterns.forEach((p, i) => {
+    if (metroNames[i] === p.name &&
+        (currentCategoryAbcStrings[i] || '') === (p.abc || '') &&
+        metroSlots[i] === previous[i]) {
+      metroSlots[i] = p.bpm;
+    }
+  });
+  introTempoDefaultsV2 = true;
+  return true;
 }
 
 function setShuffleRatio(val) {
@@ -7003,32 +7032,32 @@ function mkP(name, bpm, yomi, groove, beatsPerMeasure, abcOverride) {
 // ===== 初心者向けステージ（クリアを目指す練習コース） =====
 Object.assign(RHYTHM_CATEGORIES, {
   'stage0': [
-    mkP('4分音符×4', 84, 'タアタアタアタア', 'eighth', 4, 'c2 c2 c2 c2'),  // 旧: 1. 4分音符×4
-    mkP('8分音符×8', 82, 'タタタタタタタタ', 'eighth', 4, 'cc cc cc cc'),  // 旧: 2. 4拍目が休み
-    mkP('2分音符×2', 95, 'タアアアタアアア', 'eighth', 4, 'c4 c4'),  // 旧: 3. 1・3拍目だけ
-    mkP('16分音符×16', 50, 'タタタタタタタタタタタタタタタタ', 'sixteenth', 4, 'c/c/c/c/ c/c/c/c/ c/c/c/c/ c/c/c/c/'),  // 旧: 4. 2・4拍目だけ
-    mkP('3・4拍目が休み', 78, 'タアタアンンンン', 'eighth', 4, 'c2 c2 z2 z2'),  // 旧: 5. 3拍目が休み
-    mkP('1・2拍目が休み', 78, 'ンンンンタアタア', 'eighth', 4, 'z2 z2 c2 c2'),  // 旧: 6. 1拍目が休み
-    mkP('8分×4＋休み', 76, 'タタタタンンンン', 'eighth', 4, 'cc cc zz zz'),  // 旧: 7. まんなかが休み
-    mkP('2分＋休み', 100, 'タアアアンンンン', 'eighth', 4, 'c4 z4'),  // 旧: 8. 前半だけ
-    mkP('全音符', 115, 'タアアアアアアア', 'eighth', 4, 'c8'),  // 旧: 9. 後半だけ
-    mkP('全休符', 115, 'ンンンンンンンン', 'eighth', 4, 'z8'),  // 旧: 10. 2拍目が休み
-    mkP('三連符ぜんぶ', 70, 'タタタタタタタタタタタタ', 'triplet', 4, '(3ccc (3ccc (3ccc (3ccc'),  // 旧: 11. 2分音符×2
-    mkP('三連符と休み', 75, 'タタタンンンタタタンンン', 'triplet', 4, '(3ccc (3zzz (3ccc (3zzz'),  // 旧: 12. 2分音符と4分
+    mkP('4分音符×4', 70, 'タアタアタアタア', 'eighth', 4, 'c2 c2 c2 c2'),  // 旧: 1. 4分音符×4
+    mkP('8分音符×8', 70, 'タタタタタタタタ', 'eighth', 4, 'cc cc cc cc'),  // 旧: 2. 4拍目が休み
+    mkP('2分音符×2', 80, 'タアアアタアアア', 'eighth', 4, 'c4 c4'),  // 旧: 3. 1・3拍目だけ
+    mkP('16分音符×16', 45, 'タタタタタタタタタタタタタタタタ', 'sixteenth', 4, 'c/c/c/c/ c/c/c/c/ c/c/c/c/ c/c/c/c/'),  // 旧: 4. 2・4拍目だけ
+    mkP('3・4拍目が休み', 65, 'タアタアンンンン', 'eighth', 4, 'c2 c2 z2 z2'),  // 旧: 5. 3拍目が休み
+    mkP('1・2拍目が休み', 65, 'ンンンンタアタア', 'eighth', 4, 'z2 z2 c2 c2'),  // 旧: 6. 1拍目が休み
+    mkP('8分×4＋休み', 65, 'タタタタンンンン', 'eighth', 4, 'cc cc zz zz'),  // 旧: 7. まんなかが休み
+    mkP('2分＋休み', 85, 'タアアアンンンン', 'eighth', 4, 'c4 z4'),  // 旧: 8. 前半だけ
+    mkP('全音符', 100, 'タアアアアアアア', 'eighth', 4, 'c8'),  // 旧: 9. 後半だけ
+    mkP('全休符', 100, 'ンンンンンンンン', 'eighth', 4, 'z8'),  // 旧: 10. 2拍目が休み
+    mkP('三連符ぜんぶ', 60, 'タタタタタタタタタタタタ', 'triplet', 4, '(3ccc (3ccc (3ccc (3ccc'),  // 旧: 11. 2分音符×2
+    mkP('三連符と休み', 65, 'タタタンンンタタタンンン', 'triplet', 4, '(3ccc (3zzz (3ccc (3zzz'),  // 旧: 12. 2分音符と4分
   ],
   'stage1': [
-    mkP('タアンンのくり返し', 84, 'タアンンタアンン', 'eighth', 4, 'c2 z2 c2 z2'),  // 旧: 1. 4分音符×4
-    mkP('ンンタアのくり返し', 82, 'ンンタアンンタア', 'eighth', 4, 'z2 c2 z2 c2'),  // 旧: 2. 4拍目が休み
-    mkP('2・3拍目が休み', 80, 'タアンンンンタア', 'eighth', 4, 'c2 z2 z2 c2'),  // 旧: 3. 1・3拍目だけ
-    mkP('1・4拍目が休み', 80, 'ンンタアタアンン', 'eighth', 4, 'z2 c2 c2 z2'),  // 旧: 4. 2・4拍目だけ
-    mkP('4分＋2分＋4分', 90, 'タアタアアアタア', 'eighth', 4, 'c2 c4 c2'),  // 旧: 5. 3拍目が休み
-    mkP('2分＋休み＋4分', 86, 'タアアアンンタア', 'eighth', 4, 'c4 z2 c2'),  // 旧: 6. 1拍目が休み
-    mkP('4分＋休み＋2分', 88, 'タアンンタアアア', 'eighth', 4, 'c2 z2 c4'),  // 旧: 7. まんなかが休み
-    mkP('4分＋8分×4＋4分', 94, 'タアタタタタタア', 'eighth', 4, 'c2 cc cc c2'),  // 旧: 8. 前半だけ
-    mkP('8分×2＋2分＋4分', 90, 'タタタアアアタア', 'eighth', 4, 'cc c4 c2'),  // 旧: 9. 後半だけ
-    mkP('休み＋8分×2＋4分', 86, 'ンンンンタタタア', 'eighth', 4, 'z4 cc c2'),  // 旧: 10. 2拍目が休み
-    mkP('タタンンのくり返し', 92, 'タタンンタタンン', 'eighth', 4, 'cc z2 cc z2'),  // 旧: 11. 2分音符×2
-    mkP('タタタンのくり返し', 96, 'タタタンタタタン', 'eighth', 4, 'cc cz cc cz'),  // 旧: 12. 2分音符と4分
+    mkP('タアンンのくり返し', 70, 'タアンンタアンン', 'eighth', 4, 'c2 z2 c2 z2'),  // 旧: 1. 4分音符×4
+    mkP('ンンタアのくり返し', 70, 'ンンタアンンタア', 'eighth', 4, 'z2 c2 z2 c2'),  // 旧: 2. 4拍目が休み
+    mkP('2・3拍目が休み', 70, 'タアンンンンタア', 'eighth', 4, 'c2 z2 z2 c2'),  // 旧: 3. 1・3拍目だけ
+    mkP('1・4拍目が休み', 70, 'ンンタアタアンン', 'eighth', 4, 'z2 c2 c2 z2'),  // 旧: 4. 2・4拍目だけ
+    mkP('4分＋2分＋4分', 75, 'タアタアアアタア', 'eighth', 4, 'c2 c4 c2'),  // 旧: 5. 3拍目が休み
+    mkP('2分＋休み＋4分', 75, 'タアアアンンタア', 'eighth', 4, 'c4 z2 c2'),  // 旧: 6. 1拍目が休み
+    mkP('4分＋休み＋2分', 75, 'タアンンタアアア', 'eighth', 4, 'c2 z2 c4'),  // 旧: 7. まんなかが休み
+    mkP('4分＋8分×4＋4分', 80, 'タアタタタタタア', 'eighth', 4, 'c2 cc cc c2'),  // 旧: 8. 前半だけ
+    mkP('8分×2＋2分＋4分', 75, 'タタタアアアタア', 'eighth', 4, 'cc c4 c2'),  // 旧: 9. 後半だけ
+    mkP('休み＋8分×2＋4分', 75, 'ンンンンタタタア', 'eighth', 4, 'z4 cc c2'),  // 旧: 10. 2拍目が休み
+    mkP('タタンンのくり返し', 80, 'タタンンタタンン', 'eighth', 4, 'cc z2 cc z2'),  // 旧: 11. 2分音符×2
+    mkP('タタタンのくり返し', 80, 'タタタンタタタン', 'eighth', 4, 'cc cz cc cz'),  // 旧: 12. 2分音符と4分
   ],
   'stage2': [
     mkP('タアタタのくり返し', 78, 'タアタタタアタタ', 'eighth', 4, 'c2 cc c2 cc'),  // 旧: 1. 8分音符×8
@@ -7277,6 +7306,7 @@ function loadRhythmCategory(categoryKey) {
   metroSelectedSlot = 0;
   metroSlotCount = 24; // 常に24スロット固定（12問ステージは残り12枠が空欄）
   _currentCategoryKey = categoryKey;
+  introTempoDefaultsV2 = true;
   currentCategoryAbcStrings = patterns.map(p => p.abc || '');
   saveMetroSetlist();
   renderMetroSlots();
