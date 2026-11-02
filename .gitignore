@@ -13,3 +13,6 @@ AGENTS.md
 Thumbs.db
 .DS_Store
 desktop.ini
+
+# ローカル確認用の試作・起動ファイル（公開しない）
+work/
